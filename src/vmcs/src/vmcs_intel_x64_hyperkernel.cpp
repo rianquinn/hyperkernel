@@ -51,6 +51,8 @@ vmcs_intel_x64_hyperkernel::write_fields(
     if (guest_state->is_guest())
     {
         primary_processor_based_vm_execution_controls::hlt_exiting::enable();
+        primary_processor_based_vm_execution_controls::cr3_load_exiting::enable();
+        primary_processor_based_vm_execution_controls::cr3_store_exiting::enable();
 
         // TODO:
         //

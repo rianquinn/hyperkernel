@@ -74,8 +74,11 @@ public:
     ///
     void fini(user_data *data = nullptr) override;
 
-    virtual integer_pointer cr3() const
-    { return m_root_pt->cr3(); }
+    virtual integer_pointer cr3_1() const
+    { return m_root_pt1->cr3(); }
+
+    virtual integer_pointer cr3_2() const
+    { return m_root_pt2->cr3(); }
 
     virtual memory_descriptor_list &cr3_mdl()
     { return m_cr3_mdl; }
@@ -89,6 +92,12 @@ public:
     virtual integer_pointer idt_base_phys() const
     { return m_idt_base_phys; }
 
+    virtual integer_pointer page1_phys() const
+    { return m_page1_phys; }
+
+    virtual integer_pointer page2_phys() const
+    { return m_page2_phys; }
+
     virtual integer_pointer tss_base_virt() const
     { return m_tss_base_virt; }
 
@@ -97,6 +106,12 @@ public:
 
     virtual integer_pointer idt_base_virt() const
     { return m_idt_base_virt; }
+
+    virtual integer_pointer page1_virt() const
+    { return m_page1_virt; }
+
+    virtual integer_pointer page2_virt() const
+    { return m_page2_virt; }
 
     virtual gsl::not_null<gdt_x64 *> gdt()
     { return &m_vmapp_gdt; }
@@ -119,7 +134,17 @@ private:
     idt_x64::integer_pointer m_idt_base_virt;
 
     memory_descriptor_list m_cr3_mdl;
-    std::unique_ptr<root_page_table_x64> m_root_pt;
+    std::unique_ptr<root_page_table_x64> m_root_pt1;
+    std::unique_ptr<root_page_table_x64> m_root_pt2;
+
+    std::unique_ptr<uint32_t[]> m_page1;
+    std::unique_ptr<uint32_t[]> m_page2;
+
+    integer_pointer m_page1_phys;
+    integer_pointer m_page2_phys;
+
+    integer_pointer m_page1_virt;
+    integer_pointer m_page2_virt;
 
 public:
 

@@ -48,6 +48,13 @@ process_intel_x64::init(user_data *data)
     m_root_ept->map_4k(m_domain->gdt_base_virt(), m_domain->gdt_base_phys(), ept::memory_attr::ro_wb);
     m_root_ept->map_4k(m_domain->idt_base_virt(), m_domain->idt_base_phys(), ept::memory_attr::ro_wb);
 
+    ///
+    /// TEST_CODE_HERE
+    ///
+
+    m_root_ept->map_4k(m_domain->page1_virt(), m_domain->page1_phys(), ept::memory_attr::ro_wb);
+    m_root_ept->map_4k(m_domain->page2_virt(), m_domain->page2_phys(), ept::memory_attr::ro_wb);
+
     auto &&list = m_domain->cr3_mdl();
     for (auto md : list)
         m_root_ept->map_4k(md.phys, md.phys, ept::memory_attr::rw_wb);

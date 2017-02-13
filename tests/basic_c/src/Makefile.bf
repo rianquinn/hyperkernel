@@ -52,6 +52,7 @@ CROSS_OUTDIR+=%BUILD_REL%/../bin
 ################################################################################
 
 SOURCES+=main.c
+SOURCES+=cr3.asm
 
 INCLUDE_PATHS+=
 

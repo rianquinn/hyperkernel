@@ -78,6 +78,17 @@ exit_handler_intel_x64_hyperkernel::handle_exit(vmcs::value_type reason)
             break;
         }
 
+        case exit_reason::basic_exit_reason::control_register_accesses:
+        {
+            ///
+            /// TEST_CODE_HERE
+            ///
+
+            vmcs::guest_cr3::set(m_domain->cr3_2());
+            this->advance_and_resume();
+            break;
+        }
+
         case exit_reason::basic_exit_reason::vm_entry_failure_invalid_guest_state:
         case exit_reason::basic_exit_reason::ept_violation:
         case exit_reason::basic_exit_reason::triple_fault:

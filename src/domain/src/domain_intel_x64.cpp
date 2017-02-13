@@ -34,7 +34,10 @@ domain_intel_x64::domain_intel_x64(domainid::type id) :
     m_vmapp_gdt{512},
     m_vmapp_idt{512},
     m_vmapp_tss{std::make_unique<uint64_t[]>(512)},
-    m_root_pt{std::make_unique<root_page_table_x64>()}
+    m_root_pt1{std::make_unique<root_page_table_x64>()},
+    m_root_pt2{std::make_unique<root_page_table_x64>()},
+    m_page1{std::make_unique<uint32_t[]>(0x400)},
+    m_page2{std::make_unique<uint32_t[]>(0x400)}
 { }
 
 void
@@ -49,6 +52,16 @@ domain_intel_x64::init(user_data *data)
     m_gdt_base_virt = 0x0000000100001000UL;
     m_idt_base_virt = 0x0000000100002000UL;
     m_tss_base_virt = 0x0000000100003000UL;
+
+    ///
+    /// TEST_CODE_HERE
+    ///
+
+    m_page1_phys = g_mm->virtptr_to_physint(m_page1.get());
+    m_page2_phys = g_mm->virtptr_to_physint(m_page2.get());
+
+    m_page1_virt = 0x0000000200000000UL;
+    m_page2_virt = 0x0000000200001000UL;
 
     expects(bfn::lower(m_gdt_base_phys) == 0);
     expects(bfn::lower(m_idt_base_phys) == 0);
@@ -72,18 +85,42 @@ domain_intel_x64::init(user_data *data)
     m_vmapp_gdt.set_limit(4, 0xFFFFFFFF);
     m_vmapp_gdt.set_limit(5, 0x1000);
 
-    m_root_pt->setup_identity_map_1g(0x0, 0x100000000);
+    m_root_pt1->setup_identity_map_1g(0x0, 0x100000000);
+    m_root_pt2->setup_identity_map_1g(0x0, 0x100000000);
 
-    /// TODO: Need to change the permissions of each entry such that they are
-    /// set to U/S
-    ///
-    /// Can we use read-only?
-    ///
-    m_root_pt->map_4k(m_gdt_base_virt, m_gdt_base_virt, x64::memory_attr::rw_wb);
-    m_root_pt->map_4k(m_idt_base_virt, m_idt_base_virt, x64::memory_attr::rw_wb);
-    m_root_pt->map_4k(m_tss_base_virt, m_tss_base_virt, x64::memory_attr::rw_wb);
+    m_root_pt1->map_4k(m_gdt_base_virt, m_gdt_base_virt, x64::memory_attr::rw_wb);
+    m_root_pt1->map_4k(m_idt_base_virt, m_idt_base_virt, x64::memory_attr::rw_wb);
+    m_root_pt1->map_4k(m_tss_base_virt, m_tss_base_virt, x64::memory_attr::rw_wb);
 
-    m_cr3_mdl = m_root_pt->pt_to_mdl();
+    m_root_pt2->map_4k(m_gdt_base_virt, m_gdt_base_virt, x64::memory_attr::rw_wb);
+    m_root_pt2->map_4k(m_idt_base_virt, m_idt_base_virt, x64::memory_attr::rw_wb);
+    m_root_pt2->map_4k(m_tss_base_virt, m_tss_base_virt, x64::memory_attr::rw_wb);
+
+    ///
+    /// TEST_CODE_HERE
+    ///
+
+    #define test_virt_addr 0x0000000100004000UL
+
+    m_root_pt1->map_4k(test_virt_addr, m_page1_virt, x64::memory_attr::rw_wb);
+    m_root_pt2->map_4k(test_virt_addr, m_page2_virt, x64::memory_attr::rw_wb);
+
+    auto &&entry1 = m_root_pt1->virt_to_pte(test_virt_addr);
+    std::cout << "entry1.global(): " << std::boolalpha << entry1.global() << '\n';
+
+    auto &&entry2 = m_root_pt2->virt_to_pte(test_virt_addr);
+    std::cout << "entry2.global(): " << std::boolalpha << entry2.global() << '\n';
+
+    m_page1[0] = 0x1CB00BE5;
+    m_page2[0] = 0xDEADBEEF;
+
+    auto &&list1 = m_root_pt1->pt_to_mdl();
+    for (auto md : list1)
+        m_cr3_mdl.push_back(md);
+
+    auto &&list2 = m_root_pt2->pt_to_mdl();
+    for (auto md : list2)
+        m_cr3_mdl.push_back(md);
 
     bfdebug << "domain init: " << id() << '\n';
     domain::init(data);

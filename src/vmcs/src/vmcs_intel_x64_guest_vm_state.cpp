@@ -67,7 +67,7 @@ vmcs_intel_x64_guest_vm_state::vmcs_intel_x64_guest_vm_state(
     m_cr0 |= cr0::write_protect::mask;
     m_cr0 |= cr0::paging::mask;
 
-    m_cr3 = m_domain->cr3();
+    m_cr3 = m_domain->cr3_1();
 
     m_cr4 = 0;
     m_cr4 |= cr4::physical_address_extensions::mask;

@@ -23,12 +23,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+///
+/// TEST_CODE_HERE
+///
+
+void __write_cr3(uint64_t val);
+
 int
 main(int argc, const char *argv[])
 {
     (void) argc;
     (void) argv;
 
-    printf("hello world\n");
+    uint64_t *val = (uint64_t *)0x0000000100004000UL;
+
+    printf("val: %p\n", (void *)val[0]);
+    __write_cr3(0);
+    printf("val: %p\n", (void *)val[0]);
+
     return 0;
 }
