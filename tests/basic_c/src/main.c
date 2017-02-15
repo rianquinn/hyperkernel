@@ -23,12 +23,29 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+uint64_t __read_tsc(void);
+uint64_t __read_tscp(void);
+
 int
 main(int argc, const char *argv[])
 {
     (void) argc;
     (void) argv;
 
-    printf("hello world\n");
+    int i, l;
+    char *page = (char *)0x0000000100004000UL;
+
+    uint64_t stsc;
+    uint64_t etsc;
+
+    stsc = __read_tsc();
+
+    for (l = 0; l < 100000; l++)
+        for (i = 0; i < 4096; i++)
+            page[i]++;
+
+    etsc = __read_tscp();
+
+    printf("time: %ld\n", etsc - stsc);
     return 0;
 }

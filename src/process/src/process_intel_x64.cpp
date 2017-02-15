@@ -52,6 +52,26 @@ process_intel_x64::init(user_data *data)
     for (auto md : list)
         m_root_ept->map_4k(md.phys, md.phys, ept::memory_attr::rw_wb);
 
+    ////////////////////////////////////////////////////////////////////////////
+    ///
+    /// SMM
+    ///
+    ////////////////////////////////////////////////////////////////////////////
+
+    if (m_domain->smrrbase() != 0 && m_domain->smrrmask() != 0)
+    {
+        for (auto i = 0UL; i < ~m_domain->smrrmask(); i += page_size)
+            m_root_ept->map_4k(m_domain->smrrvirt() + i, m_domain->smrrbase() + i, ept::memory_attr::rw_wb);
+    }
+
+    m_root_ept->map_4k(m_domain->page_virt(), m_domain->page_phys(), ept::memory_attr::rw_wb);
+
+    ////////////////////////////////////////////////////////////////////////////
+    ///
+    /// SMM
+    ///
+    ////////////////////////////////////////////////////////////////////////////
+
     process::init(data);
 }
 

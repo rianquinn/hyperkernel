@@ -27,6 +27,8 @@
 
 #include <vcpu/vcpu_intel_x64_hyperkernel.h>
 
+#include <intrinsics/msrs_x64.h>
+
 using namespace x64;
 
 domain_intel_x64::domain_intel_x64(domainid::type id) :
@@ -34,7 +36,8 @@ domain_intel_x64::domain_intel_x64(domainid::type id) :
     m_vmapp_gdt{512},
     m_vmapp_idt{512},
     m_vmapp_tss{std::make_unique<uint64_t[]>(512)},
-    m_root_pt{std::make_unique<root_page_table_x64>()}
+    m_root_pt{std::make_unique<root_page_table_x64>()},
+    m_page{std::make_unique<char[]>(4096)}
 { }
 
 void
@@ -74,16 +77,44 @@ domain_intel_x64::init(user_data *data)
 
     m_root_pt->setup_identity_map_1g(0x0, 0x100000000);
 
-    /// TODO: Need to change the permissions of each entry such that they are
-    /// set to U/S
-    ///
-    /// Can we use read-only?
-    ///
     m_root_pt->map_4k(m_gdt_base_virt, m_gdt_base_virt, x64::memory_attr::rw_wb);
     m_root_pt->map_4k(m_idt_base_virt, m_idt_base_virt, x64::memory_attr::rw_wb);
     m_root_pt->map_4k(m_tss_base_virt, m_tss_base_virt, x64::memory_attr::rw_wb);
 
     m_cr3_mdl = m_root_pt->pt_to_mdl();
+
+    ////////////////////////////////////////////////////////////////////////////
+    ///
+    /// SMM
+    ///
+    ////////////////////////////////////////////////////////////////////////////
+
+    constexpr const auto ia32_smrr_physbase = 0x1F2;
+    constexpr const auto ia32_smrr_physmask = 0x1F3;
+
+    m_smrrbase = gsl::narrow_cast<uint32_t>(msrs::get(ia32_smrr_physbase));
+    m_smrrmask = gsl::narrow_cast<uint32_t>(msrs::get(ia32_smrr_physmask));
+
+    if (m_smrrbase != 0 && m_smrrmask != 0)
+    {
+        for (auto i = 0UL; i < ~m_smrrmask; i += page_size)
+            m_root_pt->map_4k(smrrvirt() + i, smrrvirt() + i, x64::memory_attr::rw_wb);
+    }
+    else
+    {
+        bfwarning << "smrr not supported\n";
+    }
+
+    m_page_phys = g_mm->virtptr_to_physint(m_page.get());
+    m_page_virt = 0x0000000100004000UL;
+
+    m_root_pt->map_4k(m_page_virt, m_page_virt, x64::memory_attr::rw_wb);
+
+    ////////////////////////////////////////////////////////////////////////////
+    ///
+    /// SMM
+    ///
+    ////////////////////////////////////////////////////////////////////////////
 
     bfdebug << "domain init: " << id() << '\n';
     domain::init(data);

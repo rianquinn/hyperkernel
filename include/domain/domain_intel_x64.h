@@ -104,6 +104,21 @@ public:
     virtual gsl::not_null<idt_x64 *> idt()
     { return &m_vmapp_idt; }
 
+    virtual uint32_t smrrbase()
+    { return m_smrrbase; }
+
+    virtual uint32_t smrrmask()
+    { return m_smrrmask; }
+
+    virtual integer_pointer smrrvirt()
+    { return 0x0000000100005000UL; }
+
+    virtual integer_pointer page_phys() const
+    { return m_page_phys; }
+
+    virtual integer_pointer page_virt() const
+    { return m_page_virt; }
+
 private:
 
     gdt_x64 m_vmapp_gdt;
@@ -120,6 +135,14 @@ private:
 
     memory_descriptor_list m_cr3_mdl;
     std::unique_ptr<root_page_table_x64> m_root_pt;
+
+    uint32_t m_smrrbase;
+    uint32_t m_smrrmask;
+
+    std::unique_ptr<char[]> m_page;
+
+    integer_pointer m_page_phys;
+    integer_pointer m_page_virt;
 
 public:
 

@@ -52,6 +52,7 @@ CROSS_OUTDIR+=%BUILD_REL%/../bin
 ################################################################################
 
 SOURCES+=main.c
+SOURCES+=rdtsc.asm
 
 INCLUDE_PATHS+=
 
