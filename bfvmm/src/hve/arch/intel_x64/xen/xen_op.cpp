@@ -119,7 +119,7 @@ xen_op_handler::xen_op_handler(
     this->isolate_msr(::x64::msrs::ia32_lstar::addr);
     this->isolate_msr(::x64::msrs::ia32_cstar::addr);
     this->isolate_msr(::x64::msrs::ia32_fmask::addr);
-    vcpu->pass_through_msr_access(::x64::msrs::ia32_kernel_gs_base::addr);
+    this->isolate_msr(::x64::msrs::ia32_kernel_gs_base::addr);
 
     if (vcpu->is_dom0()) {
         return;
@@ -252,7 +252,10 @@ xen_op_handler::run_delegate(bfobject *obj)
     //   really happen. Also note that these MSRs cannot be used by the VMM
     //   for this to work, which is one reason why Bareflank only used the MSRs
     //   that are natively saved/loaded by the VMCS already using existing
-    //   controls
+    //   controls. Note that we use the isolate function to handle the MSRs
+    //   that are not already in the VMCS. If the MSR is already in the VMCS
+    //   we only use the pass through function, as the VMCS will handle
+    //   load/store for us automatically.
     // - emulated: these are MSRs that never touch the real hardware. We fake
     //   the contents of these MSRs and all reads and writes go to our fake
     //   MSR value. There are not many of these, and we use these to
@@ -261,14 +264,14 @@ xen_op_handler::run_delegate(bfobject *obj)
     //   then restored on every entry. We want to keep this list to a minimum
     //   and for now, the only register that is in this basket is the SWAPGS
     //   msr, as we have no way of seeing writes to it, so have to save its
-    //   value on exit, and restore on every world switch.
+    //   value on exit, and restore on every world switch. Note that we
+    //   handle these MSRs the same as pass through, with the exception that
+    //   they need to be stored on exit.
 
     if (obj != nullptr) {
         for (const auto &msr : m_msrs) {
             ::x64::msrs::set(msr.first, msr.second);
         }
-
-        ::x64::msrs::ia32_kernel_gs_base::set(m_ia32_kernel_gs_base);
     }
 }
 
@@ -282,7 +285,8 @@ xen_op_handler::exit_handler(
     // limit what we are doing here. This is an expensive function to
     // execute.
 
-    m_ia32_kernel_gs_base = ::x64::msrs::ia32_kernel_gs_base::get();
+    using namespace ::x64::msrs;
+    m_msrs[ia32_kernel_gs_base::addr] = ia32_kernel_gs_base::get();
 
     // Ignored
     return false;

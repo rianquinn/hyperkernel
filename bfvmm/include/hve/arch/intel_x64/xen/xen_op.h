@@ -178,7 +178,6 @@ private:
 private:
 
     uint64_t m_cpu_frequency;
-    uint64_t m_ia32_kernel_gs_base;
     std::unordered_map<uint32_t, uint64_t> m_msrs;
 
 private:
