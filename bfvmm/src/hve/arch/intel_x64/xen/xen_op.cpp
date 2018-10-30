@@ -63,8 +63,8 @@ constexpr auto xen_msr_debug_nhex       = 0xC0000700;
     m_vcpu->emulate_rdmsr(                                                                          \
         a, make_delegate(rdmsr_handler, b))
 
-#define ADD_WRMSR_HANDLER(a,b)                                                                          \
-    m_vcpu->add_wrmsr_handler(                                                                          \
+#define ADD_WRMSR_HANDLER(a,b)                                                                      \
+    m_vcpu->add_wrmsr_handler(                                                                      \
         a, make_delegate(wrmsr_handler, b))
 
 #define EMULATE_WRMSR(a,b)                                                                          \
@@ -74,6 +74,10 @@ constexpr auto xen_msr_debug_nhex       = 0xC0000700;
 #define EMULATE_IO_INSTRUCTION(a,b,c)                                                               \
     m_vcpu->emulate_io_instruction(                                                                 \
         a, make_delegate(io_instruction_handler, b), make_delegate(io_instruction_handler, c))
+
+#define ADD_EPT_WRITE_HANDLER(a)                                                                    \
+    m_vcpu->add_ept_write_violation_handler(                                                        \
+        make_delegate(ept_violation_handler, a))
 
 // =============================================================================
 // Implementation
@@ -136,8 +140,13 @@ xen_op_handler::xen_op_handler(
 
     EMULATE_RDMSR(0xFE, rdmsr_zero_handler);                        // MTRRs not supported
     EMULATE_RDMSR(0x2FF, rdmsr_zero_handler);                       // MTRRs not supported
-    EMULATE_RDMSR(0x1B, ia32_apic_base_rdmsr_handler);              // TODO: use namespace name
-    EMULATE_WRMSR(0x1B, ia32_apic_base_wrmsr_handler);              // TODO: use namespace name
+
+    EMULATE_RDMSR(::intel_x64::msrs::ia32_apic_base::addr,
+                  ia32_apic_base_rdmsr_handler);                    // TODO: use namespace name
+
+    EMULATE_WRMSR(::intel_x64::msrs::ia32_apic_base::addr,
+                  ia32_apic_base_wrmsr_handler);                    // TODO: use namespace name
+
     EMULATE_RDMSR(0x1A0, ia32_misc_enable_rdmsr_handler);           // TODO: use namespace name
     EMULATE_WRMSR(0x1A0, ia32_misc_enable_wrmsr_handler);           // TODO: use namespace name
 
@@ -158,6 +167,8 @@ xen_op_handler::xen_op_handler(
     EMULATE_IO_INSTRUCTION(0xCFD, io_ones_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0xCFE, io_ones_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0xCFF, io_ones_handler, io_ignore_handler);
+
+    ADD_EPT_WRITE_HANDLER(xapic_icr_write);
 
     this->register_unplug_quirk();
 }
@@ -269,7 +280,7 @@ xen_op_handler::run_delegate(bfobject *obj)
     // Note:
     //
     // We don't use the MSR load/store pages as Intel actually states not to
-    // use them so that you can us lazy load/store. To make this work we have
+    // use them so that you can use lazy load/store. To make this work we have
     // three different types of MSRs that we have to deal with:
     // - pass through: these are MSRs that are passed through to the guest so
     //   that the guest can read / write to these MSRs and actually change
@@ -314,6 +325,8 @@ xen_op_handler::exit_handler(
     // Note that this function is executed on every exit, so we want to
     // limit what we are doing here. This is an expensive function to
     // execute.
+    //
+    // Should we add this to the exit/entry asm glue? - CD
 
     using namespace ::x64::msrs;
     m_msrs[ia32_kernel_gs_base::addr] = ia32_kernel_gs_base::get();
@@ -414,7 +427,10 @@ xen_op_handler::ia32_apic_base_rdmsr_handler(
 {
     bfignored(vcpu);
 
-    info.val = m_vcpu->lapic_base() | 0x100;
+    auto val = m_vcpu->lapic_base();
+    ::intel_x64::msrs::ia32_apic_base::bsp::enable(val)
+    info.val = val
+
     return true;
 }
 
@@ -932,6 +948,35 @@ xen_op_handler::update_vcpu_time_info()
     info.tsc_timestamp = ::x64::read_tsc::get();
     info.system_time = (info.tsc_timestamp * 1000) / (m_cpu_frequency / 1000);
     info.version = 0;
+}
+
+// -----------------------------------------------------------------------------
+// INIT-SIPI-SIPI handler
+// -----------------------------------------------------------------------------
+bool
+xen_op_handler::handle_xapic_init_sipi(
+    gsl::not_null<vcpu_t *> vcpu,
+    eapis::intel_x64::ept_violation_handler::info_t &info)
+{
+    constexpr uint32_t icr0_offset = 0x300U;
+    constexpr uint32_t icr1_offset = 0x310U;
+
+    auto base = vcpu->lapic_base();
+    if (bfn::upper(info.gpa) != base) {
+        return false;
+    }
+
+    /// MAP IN MEM FIRT DUMMY
+    auto offset = bfn::lower(info.gpa);
+    switch (offset) {
+        case icr0_offset:
+            auto mode = ::intel_x64::lapic::icr::delivery_mode::get(
+
+        case icr1_offset:
+
+        default:
+            return false;
+    }
 }
 
 // -----------------------------------------------------------------------------
