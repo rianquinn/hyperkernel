@@ -18,6 +18,7 @@
 
 #include <iostream>
 #include <hve/arch/intel_x64/vcpu.h>
+#include <eapis/hve/arch/intel_x64/time.h>
 
 #include <hve/arch/intel_x64/xen/public/xen.h>
 #include <hve/arch/intel_x64/xen/public/memory.h>
@@ -182,6 +183,14 @@ cpu_frequency(void)
     // - The result of this function is in kHz.
     // - The TSC core ratio is used instead of 0x16 as it is more accurate
 
+    if (!eapis::intel_x64::time::tsc_supported()) {
+        throw std::runtime_error("unsupported system: no TSC");
+    }
+
+    if (!eapis::intel_x64::time::invariant_tsc_supported()) {
+        throw std::runtime_error("unsupported system: TSC is not invariant");
+    }
+
     if (ebx::get(0x40000000) == 0x61774d56) {
         if (auto freq = eax::get(0x40000010); freq != 0) {
             return freq;
@@ -193,30 +202,51 @@ cpu_frequency(void)
     auto [denominator, numerator, freq, ignore] =
         ::x64::cpuid::get(0x15, 0, 0, 0);
 
+
     if (denominator == 0 || numerator == 0) {
         throw std::runtime_error("unsupported system: missing TSC ratio");
     }
 
+    bfdebug_ndec(0, "TSC ratio", numerator / denominator);
+    bfdebug_ndec(0, "TSC (kHz)", 24000 * numerator / denominator);
+
     if (freq == 0) {
-        switch (feature_information::eax::family_id::get()) {
-            case 0x4E:  // Skylake Mobile
-            case 0x5E:  // Skylake Desktop
-            case 0x8E:  // Kabylake Mobile
-            case 0x9E:  // Kabylake Desktop
-                freq = 24000;
-                break;
+        //
+        // We need the display family here, not the family id.
+        // See
+        //      eapis/bfvmm/src/hve/arch/intel_x64/cpuid.cpp
+        //      eapis/bfvmm/include/hve/arch/intel_x64/{time,cpuid}.h
+        //
+        // for details; display family is a function of family id
+        //
+//        switch (feature_information::eax::family_id::get()) {
+//            case 0x4E:  // Skylake Mobile
+//            case 0x5E:  // Skylake Desktop
+//            case 0x8E:  // Kabylake Mobile
+//            case 0x9E:  // Kabylake Desktop
+//                freq = 24000;
+//                break;
+//
+//            case 0x5F:  // Atom Denverton
+//                freq = 25000;
+//                break;
+//
+//            case 0x5C:  // Atom Goldmont
+//                freq = 19200;
+//                break;
+//
+//            default:
+//                throw std::runtime_error("unsupported system: unknown freq");
+//        }
 
-            case 0x5F:  // Atom Denverton
-                freq = 25000;
-                break;
+        auto bus = eapis::intel_x64::time::bus_freq_MHz();
+        auto tsc = eapis::intel_x64::time::tsc_freq_MHz(bus);
+        auto pet = eapis::intel_x64::time::pet_freq_MHz(tsc);
 
-            case 0x5C:  // Atom Goldmont
-                freq = 19200;
-                break;
+        bfdebug_ndec(0, "TSC (kHz)", tsc * 1000);
+        bfdebug_ndec(0, "PET (kHz)", pet * 1000);
 
-            default:
-                throw std::runtime_error("unsupported system: unknown freq");
-        };
+        return tsc;
     }
     else {
         freq /= 1000;
@@ -867,7 +897,7 @@ xen_op_handler::reset_vcpu_time_info()
     /// set to 0.
     ///
 
-    constexpr const uint64_t GHz = 10^9;
+    constexpr const uint64_t GHz = 10e9;
     auto &info = m_shared_info->vcpu_info[0].time;
 
     info.tsc_shift = 0;
@@ -882,7 +912,7 @@ xen_op_handler::update_vcpu_time_info()
         return;
     }
 
-    constexpr const uint64_t us = 10^6;
+    constexpr const uint64_t us = 10e6;
     auto &info = m_shared_info->vcpu_info[0].time;
 
     // The xen.h comments suggest that we need to flip the version to prevent
