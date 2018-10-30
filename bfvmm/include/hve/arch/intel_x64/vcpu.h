@@ -28,7 +28,9 @@
 #include "vmcall/bf86_op.h"
 
 #include "xen/xen_op.h"
+#include "xen/public/event_channel.h"
 
+#include "event.h"
 #include "domain.h"
 #include "lapic.h"
 
@@ -45,6 +47,9 @@ namespace hyperkernel::intel_x64
 class vcpu : public eapis::intel_x64::vcpu
 {
 public:
+
+    using domain_t = hyperkernel::intel_x64::domain;
+    using event_queue_t = hyperkernel::intel_x64::event_queue;
 
     /// Constructor
     ///
@@ -256,6 +261,19 @@ public:
     ///
     VIRTUAL uint64_t lapic_base() const;
 
+    /// Setup Control Block
+    ///
+    /// Initialize each event queue
+    ///
+    VIRTUAL void setup_control_block();
+
+    /// Map Control Block
+    ///
+    /// @param gfn the GPA of the page to map in
+    /// @param offset the offset from gfn of the control_block
+    //
+    VIRTUAL void map_control_block(uint64_t gfn, uint32_t offset);
+
     //--------------------------------------------------------------------------
     // Resources
     //--------------------------------------------------------------------------
@@ -267,9 +285,15 @@ public:
     ///
     std::vector<e820_entry_t> &e820_map();
 
+    /// Domain
+    ///
+    /// @return the domain this vcpu is in
+    ///
+    domain_t *domain();
+
 private:
 
-    domain *m_domain{};
+    domain_t *m_domain{};
     lapic m_lapic;
 
     external_interrupt_handler m_external_interrupt_handler;
@@ -284,6 +308,10 @@ private:
 
     bool m_killed{};
     vcpu *m_parent_vcpu{};
+
+    std::array<event_queue_t, EVTCHN_FIFO_MAX_QUEUES> m_queue{};
+    page_ptr<uint8_t> m_control_block_page{nullptr};
+    struct evtchn_fifo_control_block *m_control_block{nullptr};
 };
 
 }

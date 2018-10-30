@@ -19,8 +19,11 @@
 #include <iostream>
 #include <hve/arch/intel_x64/vcpu.h>
 #include <eapis/hve/arch/intel_x64/time.h>
+#include <Zydis/Zydis.h>
 
 #include <hve/arch/intel_x64/xen/public/xen.h>
+#include <hve/arch/intel_x64/xen/public/event_channel.h>
+#include <hve/arch/intel_x64/xen/public/memory.h>
 #include <hve/arch/intel_x64/xen/public/memory.h>
 #include <hve/arch/intel_x64/xen/public/version.h>
 #include <hve/arch/intel_x64/xen/public/hvm/hvm_op.h>
@@ -75,10 +78,10 @@ constexpr auto xen_msr_debug_nhex       = 0xC0000700;
     m_vcpu->emulate_io_instruction(                                                                 \
         a, make_delegate(io_instruction_handler, b), make_delegate(io_instruction_handler, c))
 
-#define ADD_EPT_WRITE_HANDLER(a)                                                                    \
-    m_vcpu->add_ept_write_violation_handler(                                                        \
-        make_delegate(ept_violation_handler, a))
-
+//#define ADD_EPT_WRITE_HANDLER(a)                                                                    \
+//    m_vcpu->add_ept_write_violation_handler(                                                        \
+//        make_delegate(ept_violation_handler, a))
+//
 // =============================================================================
 // Implementation
 // =============================================================================
@@ -113,6 +116,7 @@ xen_op_handler::xen_op_handler(
     ADD_VMCALL_HANDLER(HYPERVISOR_memory_op);
     ADD_VMCALL_HANDLER(HYPERVISOR_xen_version);
     ADD_VMCALL_HANDLER(HYPERVISOR_hvm_op);
+    ADD_VMCALL_HANDLER(HYPERVISOR_event_channel_op);
 
     if (vcpu->is_domU()) {
         vcpu->trap_on_all_io_instruction_accesses();
@@ -168,7 +172,7 @@ xen_op_handler::xen_op_handler(
     EMULATE_IO_INSTRUCTION(0xCFE, io_ones_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0xCFF, io_ones_handler, io_ignore_handler);
 
-    ADD_EPT_WRITE_HANDLER(xapic_icr_write);
+    //ADD_EPT_WRITE_HANDLER(xapic_icr_write);
 
     this->register_unplug_quirk();
 }
@@ -428,8 +432,8 @@ xen_op_handler::ia32_apic_base_rdmsr_handler(
     bfignored(vcpu);
 
     auto val = m_vcpu->lapic_base();
-    ::intel_x64::msrs::ia32_apic_base::bsp::enable(val)
-    info.val = val
+    ::intel_x64::msrs::ia32_apic_base::bsp::enable(val);
+    info.val = val;
 
     return true;
 }
@@ -862,9 +866,62 @@ xen_op_handler::XENVER_get_features_handler(
 }
 
 // -----------------------------------------------------------------------------
-// HYPERVISOR_hvm_op
+// HYPERVISOR_event_channel_op
 // -----------------------------------------------------------------------------
 
+bool
+xen_op_handler::HYPERVISOR_event_channel_op(gsl::not_null<vcpu_t *> vcpu)
+{
+    if (vcpu->rax() != __HYPERVISOR_event_channel_op) {
+        return false;
+    }
+
+    switch(vcpu->rdi()) {
+        case EVTCHNOP_init_control:
+            this->EVTCHNOP_init_control_handler(m_vcpu);
+            return true;
+
+        default:
+            break;
+    };
+
+    throw std::runtime_error("unknown HYPERVISOR_event_channel_op");
+}
+
+#define invalid_vmcall_arg(call, msg) std::invalid_argument(call msg)
+
+void
+xen_op_handler::EVTCHNOP_init_control_handler(gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        auto ctl = vcpu->map_arg<evtchn_init_control_t>(vcpu->rsi());
+
+        ctl->link_bits = EVTCHN_FIFO_LINK_BITS;
+
+        auto vcpuid = ctl->vcpu;
+        auto gfn = ctl->control_gfn;
+        auto offset = ctl->offset;
+
+        expects(vcpuid == vcpu->id());
+
+        vcpu->setup_control_block();
+        vcpu->map_control_block(gfn, offset);
+////
+////            dom->evtchn_port_ops = ops;
+////            setup_ports(dom);
+//
+//
+//
+        vcpu->set_rax(SUCCESS);
+    }
+    catchall({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
+// -----------------------------------------------------------------------------
+// HYPERVISOR_hvm_op
+// -----------------------------------------------------------------------------
 bool
 xen_op_handler::HYPERVISOR_hvm_op(
     gsl::not_null<vcpu_t *> vcpu)
@@ -953,31 +1010,80 @@ xen_op_handler::update_vcpu_time_info()
 // -----------------------------------------------------------------------------
 // INIT-SIPI-SIPI handler
 // -----------------------------------------------------------------------------
-bool
-xen_op_handler::handle_xapic_init_sipi(
-    gsl::not_null<vcpu_t *> vcpu,
-    eapis::intel_x64::ept_violation_handler::info_t &info)
-{
-    constexpr uint32_t icr0_offset = 0x300U;
-    constexpr uint32_t icr1_offset = 0x310U;
 
-    auto base = vcpu->lapic_base();
-    if (bfn::upper(info.gpa) != base) {
-        return false;
-    }
-
-    /// MAP IN MEM FIRT DUMMY
-    auto offset = bfn::lower(info.gpa);
-    switch (offset) {
-        case icr0_offset:
-            auto mode = ::intel_x64::lapic::icr::delivery_mode::get(
-
-        case icr1_offset:
-
-        default:
-            return false;
-    }
-}
+// bool
+// xen_op_handler::handle_xapic_init_sipi(
+//     gsl::not_null<vcpu_t *> vcpu,
+//     eapis::intel_x64::ept_violation_handler::info_t &info)
+// {
+//     constexpr uint32_t icr0_offset = 0x300U;
+//     constexpr uint32_t icr1_offset = 0x310U;
+//
+//     const auto base = vcpu->lapic_base();
+//     if (bfn::upper(info.gpa) != base) {
+//         return false;
+//     }
+//
+//     const auto offset = bfn::lower(info.gpa);
+//     switch (offset) {
+//         case icr0_offset:
+//         case icr1_offset:
+//             break;
+//         default:
+//             return false;
+//     }
+//
+//     const auto len = vmcs_n::vm_exit_instruction_length::get();
+//     const auto ump = vcpu->map_gpa_4k<uint8_t>(base);
+//     if (!ump) {
+//         throw std::runtime_error("failed to map xAPIC gpa");
+//     }
+//
+//     ZydisDecoder decoder;
+//     ZydisDecodedInstruction insn;
+//     ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_ADDRESS_WIDTH_64);
+//     const auto ret = ZydisDecoderDecodeBuffer(&decoder,
+//                                               ump.get,
+//                                               len,
+//                                               info.gva,
+//                                               &insn);
+//     if (!ZYAN_SUCCESS(ret)) {
+//         throw std::runtime_error("failed to decode xAPIC access");
+//     }
+//
+//     if (insn.operand_count != 2) {
+//         throw std::runtime_error("invalid op count for xAPIC access");
+//     }
+//
+//     ZydisDecodedOperand *src = insn.operands[1];
+//     if (src->type != ZYDIS_OPERAND_TYPE_REGISTER) {
+//         throw std::runtime_error("invalid src op for xAPIC access");
+//     }
+//
+//     uint64_t data;
+//
+//     switch (src->reg.value) {
+//         case ZYDIS_REGISTER_EAX: data = vcpu->rax();
+//         case ZYDIS_REGISTER_EBX: data = vcpu->rbx();
+//         case ZYDIS_REGISTER_ECX: data = vcpu->rcx();
+//         case ZYDIS_REGISTER_EDX: data = vcpu->rdx();
+//         case ZYDIS_REGISTER_ESI: data = vcpu->rsi();
+//         case ZYDIS_REGISTER_EDI: data = vcpu->rdi();
+//         case ZYDIS_REGISTER_R8D: data = vcpu->r08();
+//         case ZYDIS_REGISTER_R9D: data = vcpu->r09();
+//         case ZYDIS_REGISTER_R10D: data = vcpu->r10();
+//         case ZYDIS_REGISTER_R11D: data = vcpu->r11();
+//         case ZYDIS_REGISTER_R12D: data = vcpu->r12();
+//         case ZYDIS_REGISTER_R13D: data = vcpu->r13();
+//         case ZYDIS_REGISTER_R14D: data = vcpu->r14();
+//         case ZYDIS_REGISTER_R15D: data = vcpu->r15();
+//         default:
+//             throw std::runtime_error("Unexpected register value: " +
+//                                      std::to_string(src->reg.value));
+//     }
+//
+//     const auto mode = ::intel_x64::lapic::icr::delivery_mode::get(data);
+// }
 
 // -----------------------------------------------------------------------------
 // Quirks

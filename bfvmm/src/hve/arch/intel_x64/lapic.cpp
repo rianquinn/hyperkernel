@@ -27,7 +27,7 @@
 
 namespace lapic_id
 {
-    constexpr const auto indx = (0x020U >> 4);
+    constexpr const auto indx = (0x020U >> 2);
     constexpr const auto name = "lapic_id";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -43,7 +43,7 @@ namespace lapic_id
 
 namespace lapic_version
 {
-    constexpr const auto indx = (0x030U >> 4);
+    constexpr const auto indx = (0x030U >> 2);
     constexpr const auto name = "lapic_version";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -59,7 +59,7 @@ namespace lapic_version
 
 namespace tpr
 {
-    constexpr const auto indx = (0x080U >> 4);
+    constexpr const auto indx = (0x080U >> 2);
     constexpr const auto name = "tpr";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -75,7 +75,7 @@ namespace tpr
 
 namespace apr
 {
-    constexpr const auto indx = (0x090U >> 4);
+    constexpr const auto indx = (0x090U >> 2);
     constexpr const auto name = "apr";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -91,7 +91,7 @@ namespace apr
 
 namespace ppr
 {
-    constexpr const auto indx = (0x0A0U >> 4);
+    constexpr const auto indx = (0x0A0U >> 2);
     constexpr const auto name = "ppr";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -107,7 +107,7 @@ namespace ppr
 
 namespace eoi
 {
-    constexpr const auto indx = (0x0B0U >> 4);
+    constexpr const auto indx = (0x0B0U >> 2);
     constexpr const auto name = "eoi";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -123,7 +123,7 @@ namespace eoi
 
 namespace rrd
 {
-    constexpr const auto indx = (0x0C0U >> 4);
+    constexpr const auto indx = (0x0C0U >> 2);
     constexpr const auto name = "rrd";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -139,7 +139,7 @@ namespace rrd
 
 namespace ldr
 {
-    constexpr const auto indx = (0x0D0U >> 4);
+    constexpr const auto indx = (0x0D0U >> 2);
     constexpr const auto name = "ldr";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -155,7 +155,7 @@ namespace ldr
 
 namespace dfr
 {
-    constexpr const auto indx = (0x0E0U >> 4);
+    constexpr const auto indx = (0x0E0U >> 2);
     constexpr const auto name = "dfr";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -171,7 +171,7 @@ namespace dfr
 
 namespace svr
 {
-    constexpr const auto indx = (0x0F0U >> 4);
+    constexpr const auto indx = (0x0F0U >> 2);
     constexpr const auto name = "svr";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -187,7 +187,7 @@ namespace svr
 
 namespace isr3100
 {
-    constexpr const auto indx = (0x100U >> 4);
+    constexpr const auto indx = (0x100U >> 2);
     constexpr const auto name = "isr3100";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -203,7 +203,7 @@ namespace isr3100
 
 namespace isr6332
 {
-    constexpr const auto indx = (0x110U >> 4);
+    constexpr const auto indx = (0x110U >> 2);
     constexpr const auto name = "isr6332";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -219,7 +219,7 @@ namespace isr6332
 
 namespace isr9564
 {
-    constexpr const auto indx = (0x120U >> 4);
+    constexpr const auto indx = (0x120U >> 2);
     constexpr const auto name = "isr9564";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -235,7 +235,7 @@ namespace isr9564
 
 namespace isr12796
 {
-    constexpr const auto indx = (0x130U >> 4);
+    constexpr const auto indx = (0x130U >> 2);
     constexpr const auto name = "isr12796";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -251,7 +251,7 @@ namespace isr12796
 
 namespace isr159128
 {
-    constexpr const auto indx = (0x140U >> 4);
+    constexpr const auto indx = (0x140U >> 2);
     constexpr const auto name = "isr159128";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -267,7 +267,7 @@ namespace isr159128
 
 namespace isr191160
 {
-    constexpr const auto indx = (0x150U >> 4);
+    constexpr const auto indx = (0x150U >> 2);
     constexpr const auto name = "isr191160";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -283,7 +283,7 @@ namespace isr191160
 
 namespace isr223192
 {
-    constexpr const auto indx = (0x160U >> 4);
+    constexpr const auto indx = (0x160U >> 2);
     constexpr const auto name = "isr223192";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -299,7 +299,7 @@ namespace isr223192
 
 namespace isr255224
 {
-    constexpr const auto indx = (0x170U >> 4);
+    constexpr const auto indx = (0x170U >> 2);
     constexpr const auto name = "isr255224";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -315,7 +315,7 @@ namespace isr255224
 
 namespace tmr3100
 {
-    constexpr const auto indx = (0x180U >> 4);
+    constexpr const auto indx = (0x180U >> 2);
     constexpr const auto name = "tmr3100";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -331,7 +331,7 @@ namespace tmr3100
 
 namespace tmr6332
 {
-    constexpr const auto indx = (0x190U >> 4);
+    constexpr const auto indx = (0x190U >> 2);
     constexpr const auto name = "tmr6332";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -347,7 +347,7 @@ namespace tmr6332
 
 namespace tmr9564
 {
-    constexpr const auto indx = (0x1A0U >> 4);
+    constexpr const auto indx = (0x1A0U >> 2);
     constexpr const auto name = "tmr9564";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -363,7 +363,7 @@ namespace tmr9564
 
 namespace tmr12796
 {
-    constexpr const auto indx = (0x1B0U >> 4);
+    constexpr const auto indx = (0x1B0U >> 2);
     constexpr const auto name = "tmr12796";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -379,7 +379,7 @@ namespace tmr12796
 
 namespace tmr159128
 {
-    constexpr const auto indx = (0x1C0U >> 4);
+    constexpr const auto indx = (0x1C0U >> 2);
     constexpr const auto name = "tmr159128";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -395,7 +395,7 @@ namespace tmr159128
 
 namespace tmr191160
 {
-    constexpr const auto indx = (0x1D0U >> 4);
+    constexpr const auto indx = (0x1D0U >> 2);
     constexpr const auto name = "tmr191160";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -411,7 +411,7 @@ namespace tmr191160
 
 namespace tmr223192
 {
-    constexpr const auto indx = (0x1E0U >> 4);
+    constexpr const auto indx = (0x1E0U >> 2);
     constexpr const auto name = "tmr223192";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -427,7 +427,7 @@ namespace tmr223192
 
 namespace tmr255224
 {
-    constexpr const auto indx = (0x1F0U >> 4);
+    constexpr const auto indx = (0x1F0U >> 2);
     constexpr const auto name = "tmr255224";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -443,7 +443,7 @@ namespace tmr255224
 
 namespace irr3100
 {
-    constexpr const auto indx = (0x200U >> 4);
+    constexpr const auto indx = (0x200U >> 2);
     constexpr const auto name = "irr3100";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -459,7 +459,7 @@ namespace irr3100
 
 namespace irr6332
 {
-    constexpr const auto indx = (0x210U >> 4);
+    constexpr const auto indx = (0x210U >> 2);
     constexpr const auto name = "irr6332";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -475,7 +475,7 @@ namespace irr6332
 
 namespace irr9564
 {
-    constexpr const auto indx = (0x220U >> 4);
+    constexpr const auto indx = (0x220U >> 2);
     constexpr const auto name = "irr9564";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -491,7 +491,7 @@ namespace irr9564
 
 namespace irr12796
 {
-    constexpr const auto indx = (0x230U >> 4);
+    constexpr const auto indx = (0x230U >> 2);
     constexpr const auto name = "irr12796";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -507,7 +507,7 @@ namespace irr12796
 
 namespace irr159128
 {
-    constexpr const auto indx = (0x240U >> 4);
+    constexpr const auto indx = (0x240U >> 2);
     constexpr const auto name = "irr159128";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -523,7 +523,7 @@ namespace irr159128
 
 namespace irr191160
 {
-    constexpr const auto indx = (0x250U >> 4);
+    constexpr const auto indx = (0x250U >> 2);
     constexpr const auto name = "irr191160";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -539,7 +539,7 @@ namespace irr191160
 
 namespace irr223192
 {
-    constexpr const auto indx = (0x260U >> 4);
+    constexpr const auto indx = (0x260U >> 2);
     constexpr const auto name = "irr223192";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -555,7 +555,7 @@ namespace irr223192
 
 namespace irr255224
 {
-    constexpr const auto indx = (0x270U >> 4);
+    constexpr const auto indx = (0x270U >> 2);
     constexpr const auto name = "irr255224";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -571,7 +571,7 @@ namespace irr255224
 
 namespace esr
 {
-    constexpr const auto indx = (0x280U >> 4);
+    constexpr const auto indx = (0x280U >> 2);
     constexpr const auto name = "esr";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -587,7 +587,7 @@ namespace esr
 
 namespace lvt_cmci
 {
-    constexpr const auto indx = (0x2F0U >> 4);
+    constexpr const auto indx = (0x2F0U >> 2);
     constexpr const auto name = "lvt_cmci";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -603,7 +603,7 @@ namespace lvt_cmci
 
 namespace icr3100
 {
-    constexpr const auto indx = (0x300U >> 4);
+    constexpr const auto indx = (0x300U >> 2);
     constexpr const auto name = "icr3100";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -619,7 +619,7 @@ namespace icr3100
 
 namespace icr6332
 {
-    constexpr const auto indx = (0x310U >> 4);
+    constexpr const auto indx = (0x310U >> 2);
     constexpr const auto name = "icr6332";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -635,7 +635,7 @@ namespace icr6332
 
 namespace lvt_timer
 {
-    constexpr const auto indx = (0x320U >> 4);
+    constexpr const auto indx = (0x320U >> 2);
     constexpr const auto name = "lvt_timer";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -651,7 +651,7 @@ namespace lvt_timer
 
 namespace lvt_thermal_sensor
 {
-    constexpr const auto indx = (0x330U >> 4);
+    constexpr const auto indx = (0x330U >> 2);
     constexpr const auto name = "lvt_thermal_sensor";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -667,7 +667,7 @@ namespace lvt_thermal_sensor
 
 namespace lvt_pmc
 {
-    constexpr const auto indx = (0x340U >> 4);
+    constexpr const auto indx = (0x340U >> 2);
     constexpr const auto name = "lvt_pmc";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -683,7 +683,7 @@ namespace lvt_pmc
 
 namespace lvt_lint0
 {
-    constexpr const auto indx = (0x350U >> 4);
+    constexpr const auto indx = (0x350U >> 2);
     constexpr const auto name = "lvt_lint0";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -699,7 +699,7 @@ namespace lvt_lint0
 
 namespace lvt_lint1
 {
-    constexpr const auto indx = (0x360U >> 4);
+    constexpr const auto indx = (0x360U >> 2);
     constexpr const auto name = "lvt_lint1";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -715,7 +715,7 @@ namespace lvt_lint1
 
 namespace lvt_error
 {
-    constexpr const auto indx = (0x370U >> 4);
+    constexpr const auto indx = (0x370U >> 2);
     constexpr const auto name = "lvt_error";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -731,7 +731,7 @@ namespace lvt_error
 
 namespace initial_count
 {
-    constexpr const auto indx = (0x380U >> 4);
+    constexpr const auto indx = (0x380U >> 2);
     constexpr const auto name = "initial_count";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -747,7 +747,7 @@ namespace initial_count
 
 namespace current_count
 {
-    constexpr const auto indx = (0x390U >> 4);
+    constexpr const auto indx = (0x390U >> 2);
     constexpr const auto name = "current_count";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept
@@ -763,7 +763,7 @@ namespace current_count
 
 namespace divide_config
 {
-    constexpr const auto indx = (0x3E0U >> 4);
+    constexpr const auto indx = (0x3E0U >> 2);
     constexpr const auto name = "divide_config";
 
     inline auto get(const gsl::span<uint32_t> &view) noexcept

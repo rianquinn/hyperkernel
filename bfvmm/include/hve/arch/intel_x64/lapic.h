@@ -101,7 +101,7 @@ public:
     /// @return APIC ID
     ///
     uint32_t id() const
-    { return 0; }
+    { return 0x10; }
 
     /// APIC Base
     ///

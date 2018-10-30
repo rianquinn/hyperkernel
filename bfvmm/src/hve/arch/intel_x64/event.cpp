@@ -1,5 +1,5 @@
 //
-// Bareflank Extended APIs
+// Bareflank Hyperkernel
 // Copyright (C) 2018 Assured Information Security, Inc.
 //
 // This library is free software; you can redistribute it and/or
@@ -16,19 +16,33 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-#ifndef BASE_INTEL_X64_HYPERKERNEL_H
-#define BASE_INTEL_X64_HYPERKERNEL_H
+#include <hve/arch/intel_x64/event.h>
 
-#include <bfdebug.h>
+namespace hyperkernel::intel_x64
+{
 
-#include <bfvmm/vcpu/vcpu_manager.h>
-#include <bfvmm/hve/arch/intel_x64/vcpu.h>
+void
+event_init(event_ops::domain_t *, event_ops::event_channel_t *)
+{
 
-#include "../../../domain/domain_manager.h"
-#include "../../../../../include/hypercall.h"
 
-#ifndef PAGE_SIZE
-#define PAGE_SIZE 4096
-#endif
+}
 
-#endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+}

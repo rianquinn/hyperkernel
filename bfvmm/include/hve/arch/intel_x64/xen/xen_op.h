@@ -162,6 +162,9 @@ private:
     bool HYPERVISOR_hvm_op(gsl::not_null<vcpu_t *> vcpu);
     void HVMOP_pagetable_dying_handler(gsl::not_null<vcpu *> vcpu);
 
+    bool HYPERVISOR_event_channel_op(gsl::not_null<vcpu_t *> vcpu);
+    void EVTCHNOP_init_control_handler(gsl::not_null<vcpu *> vcpu);
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------

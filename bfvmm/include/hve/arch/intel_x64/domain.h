@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "acpi.h"
+#include "event.h"
 #include "../../../domain/domain.h"
 
 #include <eapis/hve/arch/intel_x64/vcpu.h>
@@ -210,6 +211,11 @@ public:
     ///
     void add_e820_entry(const e820_entry_t &entry);
 
+//    /// Init Event Channel FIFO
+//    ///
+//    ///
+//    void init_evtchn_fifo();
+
 public:
 
     gsl::not_null<bfvmm::x64::gdt *> gdt()
@@ -234,12 +240,21 @@ public:
     global_state()
     { return &m_vcpu_global_state; }
 
+    size_t num_evtchns() const
+    { return m_event.size(); }
+
 private:
 
     void setup_dom0();
     void setup_domU();
+    void setup_common();
+    void setup_event_ports();
 
     void setup_acpi();
+
+    bool event_port_is_valid(event_port_t port);
+    event_word_t *event_word_from_port(event_port_t port);
+    event_channel_t *event_channel_from_port(event_port_t port)
 
 private:
 
@@ -264,6 +279,14 @@ private:
     page_ptr<xsdt_t> m_xsdt;
     page_ptr<madt_t> m_madt;
     page_ptr<fadt_t> m_fadt;
+
+    // Event channel members
+    event_channel_t  *m_evtchn[event_channels_per_bucket]; // First bucket
+    event_channel_t **m_evtchn_group[nr_event_groups]; // All others
+    event_word_t *m_event_array[nr_event_pages];
+
+    uint64_t m_max_evtchns{EVTCHN_FIFO_NR_CHANNELS};
+    uint64_t m_valid_evtchns{EVTCHNS_PER_GROUP};
 
 public:
 

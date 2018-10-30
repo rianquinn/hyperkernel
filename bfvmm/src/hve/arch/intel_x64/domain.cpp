@@ -16,6 +16,7 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
+#include <bfgsl.h>
 #include <bfdebug.h>
 #include <hve/arch/intel_x64/domain.h>
 
@@ -43,6 +44,8 @@ domain::domain(domainid_type domainid) :
     else {
         this->setup_domU();
     }
+
+    this->setup_common();
 }
 
 void
@@ -76,6 +79,10 @@ domain::setup_domU()
 
     this->setup_acpi();
 }
+
+void
+domain::setup_common()
+{ m_event_array.reserve(EVTCHN_FIFO_MAX_EVENT_ARRAY_PAGES); }
 
 void
 domain::setup_acpi()
@@ -187,4 +194,65 @@ void
 domain::add_e820_entry(const e820_entry_t &entry)
 { m_e820_map.emplace_back(entry); }
 
+//
+// Translated from xen/xen/common/event_fifo.c
+//
+domain::event_word_t *
+domain::event_word_from_port(event_port_t port)
+{
+    //smp_rmb()
+
+    auto p = port / event_words_per_page;
+    auto w = port % event_words_per_page;
+
+    return m_event_array.at(p) + w;
+}
+
+bool
+domain::event_port_is_valid(event_port_t port)
+{
+    if (port >= m_max_evtchns) {
+        return false;
+    }
+
+//TODO    return port < read_atomic(&m_valid_evtchns);
+    return port < m_valid_evtchns;
+}
+
+/*
+ * See xen/xen/include/xen/event.h
+ */
+domain::event_channel_t *
+domain::group_from_port(event_port_t port)
+{
+    return m_evtchn_group[p / event_channels_per_group];
+}
+
+domain::event_channel_t *
+domain::bucket_from_port(event_port_t port)
+{
+    ((group_from_port(port))[((p % event_channels_per_group) / event_channels_per_bucket)])
+}
+
+domain::event_channel_t *
+domain::event_channel_from_port(event_port_t port)
+{
+    if (port < event_channels_per_bucket) {
+        return &m_evtchn[port];
+    }
+    return bucket_from_port(port) + (port % event_channels_per_bucket);
+}
+void
+domain::setup_event_ports()
+{
+    for (auto p = 1; p < m_max_evtchns; p++) {
+        if (!this->event_port_is_valid(p)) {
+            break;
+        }
+
+        event_channel_t *chan = this->event_channel_from_port(p);
+        //if (is_bit_set(p,
+
+        chan->m_priority = EVTCHN_FIFO_PRIORITY_DEFAULT;
+    }
 }
