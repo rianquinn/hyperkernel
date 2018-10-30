@@ -100,7 +100,7 @@ public:
     ///
     /// @return APIC ID
     ///
-    uint64_t id() const
+    uint32_t id() const
     { return 0; }
 
     /// APIC Base
@@ -117,15 +117,15 @@ public:
     ///
     /// @return APIC base GPA
     ///
-    uint64_t base() const
+    uint32_t base() const
     { return LAPIC_GPA; }
 
 private:
 
     vcpu *m_vcpu;
 
-    page_ptr<uint64_t> m_lapic_page;
-    gsl::span<uint64_t> m_lapic_view;
+    page_ptr<uint32_t> m_lapic_page;
+    gsl::span<uint32_t> m_lapic_view;
 
 };
 
