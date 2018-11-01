@@ -94,7 +94,7 @@ xen_op_handler::xen_op_handler(
     gsl::not_null<vcpu *> vcpu
 ) :
     m_vcpu{vcpu},
-    m_evtchn_op_handler{vcpu}
+    m_evtchn_fifo{vcpu}
 {
     using namespace vmcs_n;
 
@@ -883,6 +883,10 @@ xen_op_handler::HYPERVISOR_event_channel_op(gsl::not_null<vcpu_t *> vcpu)
             this->EVTCHNOP_init_control_handler(m_vcpu);
             return true;
 
+        case EVTCHNOP_send:
+            this->EVTCHNOP_send_handler(m_vcpu);
+            return true;
+
         default:
             break;
     };
@@ -896,13 +900,29 @@ xen_op_handler::EVTCHNOP_init_control_handler(gsl::not_null<vcpu *> vcpu)
 {
     try {
         auto ctl = vcpu->map_arg<evtchn_init_control_t>(vcpu->rsi());
-        m_evtchn_op_handler.init_control(ctl.get());
+        m_evtchn_fifo.init_control(ctl.get());
+
         vcpu->set_rax(SUCCESS);
     }
     catchall({
         vcpu->set_rax(FAILURE);
     })
 }
+
+void
+xen_op_handler::EVTCHNOP_send_handler(gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        auto send = vcpu->map_arg<evtchn_send_t>(vcpu->rsi());
+        m_evtchn_fifo.send(send.get());
+
+        vcpu->set_rax(SUCCESS);
+    }
+    catchall({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
 
 // -----------------------------------------------------------------------------
 // HYPERVISOR_hvm_op
@@ -946,6 +966,7 @@ xen_op_handler::HVMOP_set_param_handler(
         bfdebug_subnhex(0, "domid", arg->domid);
         bfdebug_subnhex(0, "index", arg->index);
 
+// For now the only one they try to set is the hypervisor callback
 //        vcpu->set_rax(SUCCESS);
         vcpu->set_rax(FAILURE);
     }
@@ -975,10 +996,9 @@ xen_op_handler::HVMOP_get_param_handler(
                 break;
             }
 
-            default: bfdebug_nhex(0, "unknown param index:", arg->index);
+            default: bfdebug_subnhex(0, "unknown param index:", arg->index);
         }
 
-//        vcpu->set_rax(SUCCESS);
         vcpu->set_rax(SUCCESS);
     }
     catchall({

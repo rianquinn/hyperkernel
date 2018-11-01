@@ -22,7 +22,7 @@
 #define __XEN_INTERFACE_VERSION__ 0x040900
 
 #include "../base.h"
-#include "evtchn_op.h"
+#include "evtchn_fifo.h"
 
 #include "public/xen.h"
 #include "public/arch-x86/cpuid.h"
@@ -169,6 +169,7 @@ private:
 
     bool HYPERVISOR_event_channel_op(gsl::not_null<vcpu_t *> vcpu);
     void EVTCHNOP_init_control_handler(gsl::not_null<vcpu *> vcpu);
+    void EVTCHNOP_send_handler(gsl::not_null<vcpu *> vcpu);
 
     // -------------------------------------------------------------------------
     // Helpers
@@ -195,7 +196,7 @@ private:
     uint64_t m_hypercall_page_gpa{};
     eapis::x64::unique_map<shared_info_t> m_shared_info;
     eapis::x64::unique_map<uint8_t> m_console;
-    hyperkernel::intel_x64::evtchn_op_handler m_evtchn_op_handler;
+    hyperkernel::intel_x64::evtchn_fifo m_evtchn_fifo;
 
 public:
 
