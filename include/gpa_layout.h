@@ -19,6 +19,8 @@
 #ifndef GPA_LAYOUT_H
 #define GPA_LAYOUT_H
 
+#define CONSOLE_GPA         0x07000
+
 #define ACPI_RSDP_GPA       0xE0000
 #define ACPI_XSDT_GPA       0xE1000
 #define ACPI_MADT_GPA       0xE2000

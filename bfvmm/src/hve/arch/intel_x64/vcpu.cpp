@@ -95,9 +95,11 @@ vcpu::vcpu(
 {
     if (this->is_dom0()) {
         this->write_dom0_guest_state(domain);
+        bfdebug_nhex(0, "dom0 vcpuid", id);
     }
     else {
         this->write_domU_guest_state(domain);
+        bfdebug_nhex(0, "domU vcpuid", id);
     }
 }
 
@@ -106,13 +108,13 @@ vcpu::vcpu(
 //------------------------------------------------------------------------------
 
 void
-vcpu::write_dom0_guest_state(domain_t *domain)
+vcpu::write_dom0_guest_state(domain *domain)
 {
     this->set_eptp(domain->ept());
 }
 
 void
-vcpu::write_domU_guest_state(domain_t *domain)
+vcpu::write_domU_guest_state(domain *domain)
 {
     this->set_eptp(domain->ept());
 
@@ -209,12 +211,12 @@ vcpu::write_domU_guest_state(domain_t *domain)
         ::handler_delegate_t::create<io_instruction_handler>()
     );
 
-    this->pass_through_accesses(0x3f8);
-    this->pass_through_accesses(0x3f9);
-    this->pass_through_accesses(0x3fa);
-    this->pass_through_accesses(0x3fb);
-    this->pass_through_accesses(0x3fc);
-    this->pass_through_accesses(0x3fd);
+    this->pass_through_io_accesses(0x3f8);
+    this->pass_through_io_accesses(0x3f9);
+    this->pass_through_io_accesses(0x3fa);
+    this->pass_through_io_accesses(0x3fb);
+    this->pass_through_io_accesses(0x3fc);
+    this->pass_through_io_accesses(0x3fd);
 }
 
 //------------------------------------------------------------------------------
@@ -308,50 +310,11 @@ vcpu::lapic_base() const
 { return m_lapic.base(); }
 
 //------------------------------------------------------------------------------
-// Event Channel
-//------------------------------------------------------------------------------
-
-void
-vcpu::setup_control_block()
-{
-    for (auto i = 0; i <= EVTCHN_FIFO_PRIORITY_MIN; i++) {
-        auto queue = &m_queue[i];
-        queue->priority = i;
-        //queue->lock{};
-    }
-}
-
-void
-vcpu::map_control_block(uint64_t gfn, uint32_t offset)
-{
-    static_assert(sizeof(evtchn_fifo_control_block_t) <= 4096);
-    expects(offset <= (4096 - sizeof(evtchn_fifo_control_block_t)));
-    expects((offset & 0x7) == 0);
-    expects(m_control_block_page == nullptr);
-
-    m_control_block_page = this->map_gpa_4k(gfn);
-    if (!m_control_block_page) {
-        throw std::runtime_error("map_control_block: map_gpa_4k failed");
-    }
-
-    uint8_t *virt = m_control_block_page.get() + offset;
-    m_control_block = reinterpret_cast<evtchn_fifo_control_block_t *>(virt);
-
-    for (auto i = 0; i <= EVTCHN_FIFO_PRIORITY_MIN; i++) {
-        m_queue[i].m_head = &m_control_block->head[i];
-    }
-}
-
-//------------------------------------------------------------------------------
 // Resources
 //------------------------------------------------------------------------------
 
 std::vector<e820_entry_t> &
 vcpu::e820_map()
 { return m_domain->e820_map(); }
-
-vcpu::domain_t *
-vcpu::domain()
-{ return m_domain; }
 
 }

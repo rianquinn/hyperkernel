@@ -25,6 +25,7 @@ if(${BUILD_TARGET_ARCH} STREQUAL "x86_64")
         arch/intel_x64/vmcall/vcpu_op.cpp
         arch/intel_x64/vmcall/bf86_op.cpp
         arch/intel_x64/xen/xen_op.cpp
+        arch/intel_x64/xen/evtchn_op.cpp
         arch/intel_x64/domain.cpp
         arch/intel_x64/lapic.cpp
         arch/intel_x64/vcpu.cpp

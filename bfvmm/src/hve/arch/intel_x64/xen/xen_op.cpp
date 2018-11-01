@@ -27,6 +27,7 @@
 #include <hve/arch/intel_x64/xen/public/memory.h>
 #include <hve/arch/intel_x64/xen/public/version.h>
 #include <hve/arch/intel_x64/xen/public/hvm/hvm_op.h>
+#include <hve/arch/intel_x64/xen/public/hvm/params.h>
 #include <hve/arch/intel_x64/xen/public/arch-x86/cpuid.h>
 
 #include <hve/arch/intel_x64/xen/xen_op.h>
@@ -92,7 +93,8 @@ namespace hyperkernel::intel_x64
 xen_op_handler::xen_op_handler(
     gsl::not_null<vcpu *> vcpu
 ) :
-    m_vcpu{vcpu}
+    m_vcpu{vcpu},
+    m_evtchn_op_handler{vcpu}
 {
     using namespace vmcs_n;
 
@@ -720,7 +722,7 @@ xen_op_handler::HYPERVISOR_memory_op(
         return false;
     }
 
-    switch(vcpu->rdi()) {
+    switch (vcpu->rdi()) {
         case XENMEM_add_to_physmap:
             this->XENMEM_add_to_physmap_handler(m_vcpu);
             return true;
@@ -750,7 +752,7 @@ xen_op_handler::XENMEM_add_to_physmap_handler(
             throw std::runtime_error("unsupported domid");
         }
 
-        switch(xen_add_to_physmap_arg->space) {
+        switch (xen_add_to_physmap_arg->space) {
             case XENMAPSPACE_shared_info:
                 m_shared_info =
                     vcpu->map_gpa_4k<shared_info_t>(
@@ -814,7 +816,7 @@ xen_op_handler::HYPERVISOR_xen_version(
         return false;
     }
 
-    switch(vcpu->rdi()) {
+    switch (vcpu->rdi()) {
         case XENVER_get_features:
             this->XENVER_get_features_handler(m_vcpu);
             return true;
@@ -876,7 +878,7 @@ xen_op_handler::HYPERVISOR_event_channel_op(gsl::not_null<vcpu_t *> vcpu)
         return false;
     }
 
-    switch(vcpu->rdi()) {
+    switch (vcpu->rdi()) {
         case EVTCHNOP_init_control:
             this->EVTCHNOP_init_control_handler(m_vcpu);
             return true;
@@ -885,33 +887,16 @@ xen_op_handler::HYPERVISOR_event_channel_op(gsl::not_null<vcpu_t *> vcpu)
             break;
     };
 
-    throw std::runtime_error("unknown HYPERVISOR_event_channel_op");
+    throw std::runtime_error("unknown HYPERVISOR_event_channel_op: " +
+                             std::to_string(vcpu->rdi()));
 }
-
-#define invalid_vmcall_arg(call, msg) std::invalid_argument(call msg)
 
 void
 xen_op_handler::EVTCHNOP_init_control_handler(gsl::not_null<vcpu *> vcpu)
 {
     try {
         auto ctl = vcpu->map_arg<evtchn_init_control_t>(vcpu->rsi());
-
-        ctl->link_bits = EVTCHN_FIFO_LINK_BITS;
-
-        auto vcpuid = ctl->vcpu;
-        auto gfn = ctl->control_gfn;
-        auto offset = ctl->offset;
-
-        expects(vcpuid == vcpu->id());
-
-        vcpu->setup_control_block();
-        vcpu->map_control_block(gfn, offset);
-////
-////            dom->evtchn_port_ops = ops;
-////            setup_ports(dom);
-//
-//
-//
+        m_evtchn_op_handler.init_control(ctl.get());
         vcpu->set_rax(SUCCESS);
     }
     catchall({
@@ -922,6 +907,7 @@ xen_op_handler::EVTCHNOP_init_control_handler(gsl::not_null<vcpu *> vcpu)
 // -----------------------------------------------------------------------------
 // HYPERVISOR_hvm_op
 // -----------------------------------------------------------------------------
+
 bool
 xen_op_handler::HYPERVISOR_hvm_op(
     gsl::not_null<vcpu_t *> vcpu)
@@ -930,7 +916,15 @@ xen_op_handler::HYPERVISOR_hvm_op(
         return false;
     }
 
-    switch(vcpu->rdi()) {
+    switch (vcpu->rdi()) {
+        case HVMOP_set_param:
+            this->HVMOP_set_param_handler(m_vcpu);
+            return true;
+
+        case HVMOP_get_param:
+            this->HVMOP_get_param_handler(m_vcpu);
+            return true;
+
         case HVMOP_pagetable_dying:
             this->HVMOP_pagetable_dying_handler(m_vcpu);
             return true;
@@ -941,6 +935,57 @@ xen_op_handler::HYPERVISOR_hvm_op(
 
     throw std::runtime_error("unknown HYPERVISOR_hvm_op opcode");
 }
+
+void
+xen_op_handler::HVMOP_set_param_handler(
+    gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        auto arg = vcpu->map_arg<xen_hvm_param_t>(vcpu->rsi());
+        bfdebug_info(0, "HVMOP_set_param");
+        bfdebug_subnhex(0, "domid", arg->domid);
+        bfdebug_subnhex(0, "index", arg->index);
+
+//        vcpu->set_rax(SUCCESS);
+        vcpu->set_rax(FAILURE);
+    }
+    catchall({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
+void
+xen_op_handler::HVMOP_get_param_handler(
+    gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        auto arg = vcpu->map_arg<xen_hvm_param_t>(vcpu->rsi());
+        bfdebug_info(0, "HVMOP_get_param");
+        bfdebug_subnhex(0, "domid", arg->domid);
+        bfdebug_subnhex(0, "index", arg->index);
+
+        switch (arg->index) {
+            case HVM_PARAM_CONSOLE_EVTCHN:
+                arg->value = 1;
+                break;
+
+            case HVM_PARAM_CONSOLE_PFN: {
+                m_console = vcpu->map_gpa_4k<uint8_t>(CONSOLE_GPA);
+                arg->value = CONSOLE_GPA >> x64::pt::page_shift;
+                break;
+            }
+
+            default: bfdebug_nhex(0, "unknown param index:", arg->index);
+        }
+
+//        vcpu->set_rax(SUCCESS);
+        vcpu->set_rax(SUCCESS);
+    }
+    catchall({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
 
 void
 xen_op_handler::HVMOP_pagetable_dying_handler(

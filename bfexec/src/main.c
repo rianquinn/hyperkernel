@@ -78,7 +78,7 @@ struct vm_t {
 
 uint32_t _cpuid_eax(uint32_t val) NOEXCEPT;
 
-inline uint64_t
+uint64_t
 ack()
 { return _cpuid_eax(0xBF00); }
 
@@ -336,9 +336,14 @@ typedef struct {
     char shared_info_page[0x1000];
 } reserved_6000_t;
 
+typedef struct {
+    char console[0x1000];
+} reserved_7000_t;
+
 reserved_4000_t *g_reserved_4000 = 0;   /* Xen start info */
 reserved_5000_t *g_reserved_5000 = 0;   /* Xen cmdline */
 reserved_6000_t *g_reserved_6000 = 0;   /* Xen shared info page */
+reserved_7000_t *g_reserved_7000 = 0;   /* Xen console */
 
 uint64_t g_ram_addr = 0x1000000;
 uint64_t g_ram_size = 0x8000000;
@@ -389,7 +394,19 @@ setup_e820_map()
     ret = __domain_op__add_e820_entry(
         g_vm.domainid,
         0x7000,
-        g_ram_addr - 0x7000,
+        0x1000,
+        XEN_HVM_MEMMAP_TYPE_RAM
+    );
+
+    if (ret != SUCCESS) {
+        BFALERT("__domain_op__add_e820_entry failed\n");
+        return FAILURE;
+    }
+
+    ret = __domain_op__add_e820_entry(
+        g_vm.domainid,
+        0x8000,
+        g_ram_addr - 0x8000,
         XEN_HVM_MEMMAP_TYPE_UNUSABLE
     );
 
@@ -543,7 +560,7 @@ status_t
 setup_xen_cmdline()
 {
     status_t ret;
-    const char *cmdline = "";
+    const char *cmdline = "console=uart,io,0x3f8,115200n8";
 
     /**
      * TODO:
@@ -579,6 +596,26 @@ setup_xen_shared_info_page()
     }
 
     ret = domain_op__map_gpa((uint64_t)g_reserved_6000, 0x6000, MAP_RW);
+    if (ret != BF_SUCCESS) {
+        BFALERT("__domain_op__map_gpa failed\n");
+        return FAILURE;
+    }
+
+    return SUCCESS;
+}
+
+status_t
+setup_xen_console()
+{
+    status_t ret;
+
+    g_reserved_7000 = (reserved_7000_t *)alloc_page();
+    if (g_reserved_7000 == 0) {
+        BFALERT("g_reserved_7000 alloc failed: %s\n", strerror(errno));
+        return FAILURE;
+    }
+
+    ret = domain_op__map_gpa((uint64_t)g_reserved_7000, 0x7000, MAP_RW);
     if (ret != BF_SUCCESS) {
         BFALERT("__domain_op__map_gpa failed\n");
         return FAILURE;
@@ -729,6 +766,12 @@ main(int argc, const char *argv[])
     ret = setup_xen_shared_info_page();
     if (ret != SUCCESS) {
         BFALERT("setup_xen_shared_info_page failed\n");
+        goto CLEANUP_VCPU;
+    }
+
+    ret = setup_xen_console();
+    if (ret != SUCCESS) {
+        BFALERT("setup_xen_console failed\n");
         goto CLEANUP_VCPU;
     }
 

@@ -53,9 +53,12 @@ void
 vmcall_domain_op_handler::domain_op__map_gpa(
     gsl::not_null<vcpu *> vcpu)
 {
-    try {
         auto domain_op__map_gpa_arg =
             vcpu->map_arg<__domain_op__map_gpa_arg_t>(vcpu->rcx());
+
+    try {
+        //auto domain_op__map_gpa_arg =
+        //    vcpu->map_arg<__domain_op__map_gpa_arg_t>(vcpu->rcx());
 
         auto [hpa, unused] =
             vcpu->gva_to_hpa(domain_op__map_gpa_arg->gva);
@@ -86,6 +89,9 @@ vmcall_domain_op_handler::domain_op__map_gpa(
         vcpu->set_rax(SUCCESS);
     }
     catchall({
+        bfdebug_nhex(0, "map_gpa: gva", domain_op__map_gpa_arg->gva);
+        bfdebug_nhex(0, "map_gpa: gpa", domain_op__map_gpa_arg->gpa);
+
         vcpu->set_rax(FAILURE);
     })
 }
