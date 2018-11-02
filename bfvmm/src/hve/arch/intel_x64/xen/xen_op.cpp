@@ -31,6 +31,7 @@
 #include <hve/arch/intel_x64/xen/public/arch-x86/cpuid.h>
 
 #include <hve/arch/intel_x64/xen/xen_op.h>
+#include <hve/arch/intel_x64/xen/evtchn_fifo.h>
 #include "../../../../../../include/gpa_layout.h"
 
 // wrmsr_safe(0xC0000600, dec, 0);
@@ -94,7 +95,7 @@ xen_op_handler::xen_op_handler(
     gsl::not_null<vcpu *> vcpu
 ) :
     m_vcpu{vcpu},
-    m_evtchn_fifo{vcpu}
+    m_evtchn_fifo{std::make_unique<evtchn_fifo>(vcpu, this)}
 {
     using namespace vmcs_n;
 
@@ -900,7 +901,7 @@ xen_op_handler::EVTCHNOP_init_control_handler(gsl::not_null<vcpu *> vcpu)
 {
     try {
         auto ctl = vcpu->map_arg<evtchn_init_control_t>(vcpu->rsi());
-        m_evtchn_fifo.init_control(ctl.get());
+        m_evtchn_fifo->init_control(ctl.get());
 
         vcpu->set_rax(SUCCESS);
     }
@@ -914,7 +915,7 @@ xen_op_handler::EVTCHNOP_send_handler(gsl::not_null<vcpu *> vcpu)
 {
     try {
         auto send = vcpu->map_arg<evtchn_send_t>(vcpu->rsi());
-        m_evtchn_fifo.send(send.get());
+        m_evtchn_fifo->send(send.get());
 
         vcpu->set_rax(SUCCESS);
     }
@@ -1071,6 +1072,10 @@ xen_op_handler::update_vcpu_time_info()
     info.system_time = (info.tsc_timestamp * 1000) / (m_cpu_frequency / 1000);
     info.version = 0;
 }
+
+shared_info_t *
+xen_op_handler::shared_info()
+{ return m_shared_info.get(); }
 
 // -----------------------------------------------------------------------------
 // INIT-SIPI-SIPI handler

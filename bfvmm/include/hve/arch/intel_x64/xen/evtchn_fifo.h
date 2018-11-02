@@ -25,6 +25,7 @@
 #include "../base.h"
 #include "public/event_channel.h"
 #include "evtchn.h"
+#include "xen_op.h"
 
 #include <eapis/hve/arch/x64/unmapper.h>
 
@@ -52,6 +53,7 @@ namespace hyperkernel::intel_x64
 {
 
 class vcpu;
+class xen_op_handler;
 
 struct evtchn_fifo_queue {
     uint32_t *head;
@@ -72,6 +74,10 @@ public:
     using queue_t = struct evtchn_fifo_queue;
     using bucket_t = page_ptr<chan_t>;
 
+    static_assert(is_power_of_two(sizeof(word_t)));
+    static_assert(is_power_of_two(sizeof(chan_t)));
+    static_assert(is_power_of_two(sizeof(bucket_t)));
+
     /// Constructor
     ///
     /// @expects
@@ -79,7 +85,10 @@ public:
     ///
     /// @param vcpu the vcpu of the evtchn_fifo
     ///
-    evtchn_fifo(gsl::not_null<vcpu *> vcpu);
+    evtchn_fifo(
+        gsl::not_null<vcpu *> vcpu,
+        gsl::not_null<xen_op_handler *> handler
+    );
 
     /// Destructor
     ///
@@ -103,6 +112,7 @@ private:
     // We distinguish between channel capacity and the
     // current channel size in exactly the same way std::vector does.
     //
+    static constexpr auto bits_per_xen_ulong = sizeof(xen_ulong_t) * 8;
     static constexpr auto chan_capacity = EVTCHN_FIFO_NR_CHANNELS;
     static constexpr auto word_per_page = ::x64::pt::page_size / sizeof(word_t);
     static constexpr auto event_word_capacity = chan_capacity / word_per_page;
@@ -114,6 +124,9 @@ private:
     static constexpr auto event_group_capacity = chan_capacity / chan_per_group;
 
     // Member functions
+    void make_bucket();
+
+    void setup_ports();
     void setup_control_block();
     void map_control_block(uint64_t gfn, uint32_t offset);
 
@@ -123,8 +136,6 @@ private:
     event_word_t read_event_word(port_t port);
     void write_event_word(port_t port, event_word_t val);
 
-    uint64_t word_count() const;
-    uint64_t chan_count() const;
     bool port_is_valid(port_t port) const;
 
     bool is_pending(word_t word) const;
@@ -143,7 +154,7 @@ private:
     void clear_busy(word_t word);
 
     // Data members
-    std::atomic<uint64_t> m_valid_channels;
+    std::atomic<uint64_t> m_valid_channels{};
 
     evtchn_fifo_control_block_t *m_ctl_blk{};
     eapis::x64::unique_map<uint8_t> m_ctl_blk_ump{};
@@ -153,6 +164,7 @@ private:
     std::vector<page_ptr<chan_t>> m_event_group{};
 
     vcpu *m_vcpu;
+    xen_op_handler *m_xen_handler;
 
 public:
 

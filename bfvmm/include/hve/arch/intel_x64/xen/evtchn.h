@@ -96,8 +96,8 @@ public:
     inline auto port() const
     { return m_port; }
 
-    inline auto set_pending(bool pending)
-    { m_is_pending = pending; }
+    inline auto set_pending()
+    { m_is_pending = true; }
 
     inline auto set_state(enum state state)
     { m_state = state; }
@@ -116,6 +116,9 @@ public:
 
     inline auto set_port(evtchn_port_t port)
     { return m_port = port; }
+
+    inline auto clear_pending()
+    { m_is_pending = false; }
 
 private:
 

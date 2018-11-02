@@ -16,6 +16,7 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
+#include <bfgsl.h>
 #include <hve/arch/intel_x64/vcpu.h>
 #include <hve/arch/intel_x64/xen/evtchn_fifo.h>
 
@@ -26,12 +27,20 @@
 namespace hyperkernel::intel_x64
 {
 
-evtchn_fifo::evtchn_fifo(gsl::not_null<vcpu *> vcpu)
+evtchn_fifo::evtchn_fifo(
+    gsl::not_null<vcpu *> vcpu,
+    gsl::not_null<xen_op_handler *> handler)
 :
-    m_vcpu{vcpu}
+    m_vcpu{vcpu},
+    m_xen_handler{handler}
 {
     m_event_word.reserve(event_word_capacity);
     m_event_group.reserve(event_group_capacity);
+
+    this->make_bucket();
+
+    auto chan = this->port_to_chan(0);
+    chan->set_state(evtchn::reserved);
 }
 
 void
@@ -41,6 +50,7 @@ evtchn_fifo::init_control(gsl::not_null<evtchn_init_control_t *> ctl)
     // guest arguments. Xen returns error codes like -EINVAL in rax
     bfdebug_nhex(0, "ctl->vcpu", ctl->vcpu);
     bfdebug_nhex(0, "m_vcpu->id", m_vcpu->id());
+
 //    expects(ctl->vcpu == m_vcpu->id()); the guest passes 0x10
     expects(ctl->offset <= (0x1000 - sizeof(evtchn_fifo_control_block_t)));
     expects(bfn::lower(ctl->offset, 3) == 0);
@@ -49,81 +59,63 @@ evtchn_fifo::init_control(gsl::not_null<evtchn_init_control_t *> ctl)
 
     this->setup_control_block();
     this->map_control_block(ctl->control_gfn, ctl->offset);
-
-    // set fifo port ops
-    // setup ports
-    //   -- struct evtchn
-    //   -- port_is_valid
-    //   -- evtchn_from_port
-    //   -- is_bit_set shared_info
-    //   -- set priority
+    this->setup_ports();
 }
-
-//{
-//    struct evtchn *lchn, *rchn;
-//    struct domain *rd;
-//    int            rport, ret = 0;
-//
-//    if ( !port_is_valid(ld, lport) )
-//        return -EINVAL;
-//
-//    lchn = evtchn_from_port(ld, lport);
-//
-//    spin_lock(&lchn->lock);
-//
-//    /* Guest cannot send via a Xen-attached event channel. */
-//    if ( unlikely(consumer_is_xen(lchn)) )
-//    {
-//        ret = -EINVAL;
-//        goto out;
-//    }
-//
-//    ret = xsm_evtchn_send(XSM_HOOK, ld, lchn);
-//    if ( ret )
-//        goto out;
-//
-//    switch ( lchn->state )
-//    {
-//    case ECS_INTERDOMAIN:
-//        rd    = lchn->u.interdomain.remote_dom;
-//        rport = lchn->u.interdomain.remote_port;
-//        rchn  = evtchn_from_port(rd, rport);
-//        if ( consumer_is_xen(rchn) )
-//            xen_notification_fn(rchn)(rd->vcpu[rchn->notify_vcpu_id], rport);
-//        else
-//            evtchn_port_set_pending(rd, rchn->notify_vcpu_id, rchn);
-//        break;
-//    case ECS_IPI:
-//        evtchn_port_set_pending(ld, lchn->notify_vcpu_id, lchn);
-//        break;
-//    case ECS_UNBOUND:
-//        /* silently drop the notification */
-//        break;
-//    default:
-//        ret = -EINVAL;
-//    }
-//
-//out:
-//    spin_unlock(&lchn->lock);
-//
-//    return ret;
-//}
 
 void
 evtchn_fifo::send(gsl::not_null<evtchn_send_t *> send)
 {
-    if (!this->port_is_valid(send->port)) {
-        m_vcpu->set_rax(FAILURE);
-        return;
+    auto port = send->port;
+
+    if (!this->port_is_valid(port)) {
+        throw std::invalid_argument("evtchn_fifo::send: invalid port: " +
+                                    std::to_string(port));
     }
 
-    auto chn = this->port_to_chan(send->port);
-
+    auto chan = this->port_to_chan(port);
+    bfdebug_nhex(0, "evtchn_send: channel state: ", chan->state());
 }
 
 // =============================================================================
 // Internals
 // =============================================================================
+
+void
+evtchn_fifo::make_bucket()
+{
+    const auto cur = m_event_group.size();
+    const auto cap = m_event_group.capacity();
+
+    if (GSL_UNLIKELY(cur == cap)) {
+        throw std::runtime_error("evtchn_fifo: out of buckets");
+    }
+
+    m_event_group.push_back(make_page<chan_t>());
+    m_valid_channels += chan_per_bucket;
+}
+
+void
+evtchn_fifo::setup_ports()
+{
+    for (auto p = 1; p < chan_capacity; p++) {
+        if (!this->port_is_valid(p)) {
+            bfdebug_ndec(0, "evtchn_fifo::setup_ports: invalid port: ", p)
+            return;
+        }
+
+        auto arr = m_xen_handler->shared_info()->evtchn_pending;
+        auto idx = p / bits_per_xen_ulong;
+        auto bit = p % bits_per_xen_ulong;
+        auto val = arr[idx];
+        auto chn = this->port_to_chan(p);
+
+        if (is_bit_set(bit, val)) {
+            auto chan = this->port_to_chan(p);
+            chn->set_pending();
+            bfalert_nhex(0, "pending event at port:", p);
+        }
+    }
+}
 
 void
 evtchn_fifo::setup_control_block()
@@ -185,22 +177,9 @@ evtchn_fifo::write_event_word(port_t port, event_word_t val)
     return word->store(val);
 }
 
-uint64_t
-evtchn_fifo::chan_count() const
-{ return m_event_group.size() * chan_per_group; }
-
-uint64_t
-evtchn_fifo::word_count() const
-{ return m_event_word.size() * word_per_page; }
-
 bool
-evtchn_fifo::port_is_valid(port_t p) const
-{
-    if (p >= chan_capacity) {
-        return 0;
-    }
-    return p < m_valid_channels.load();
-}
+evtchn_fifo::port_is_valid(port_t port) const
+{ return port < m_valid_channels.load(); }
 
 bool evtchn_fifo::is_pending(word_t word) const
 { return is_bit_set(word.load(), EVTCHN_FIFO_PENDING); }

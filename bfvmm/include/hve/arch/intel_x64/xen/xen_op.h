@@ -22,10 +22,10 @@
 #define __XEN_INTERFACE_VERSION__ 0x040900
 
 #include "../base.h"
-#include "evtchn_fifo.h"
 
 #include "public/xen.h"
 #include "public/arch-x86/cpuid.h"
+#include "evtchn_fifo.h"
 
 #include <eapis/hve/arch/intel_x64/vmexit/cpuid.h>
 #include <eapis/hve/arch/intel_x64/vmexit/wrmsr.h>
@@ -72,6 +72,8 @@ public:
     /// @ensures
     ///
     ~xen_op_handler() = default;
+
+    shared_info_t *shared_info();
 
 private:
 
@@ -196,12 +198,11 @@ private:
     uint64_t m_hypercall_page_gpa{};
     eapis::x64::unique_map<shared_info_t> m_shared_info;
     eapis::x64::unique_map<uint8_t> m_console;
-    hyperkernel::intel_x64::evtchn_fifo m_evtchn_fifo;
+    std::unique_ptr<hyperkernel::intel_x64::evtchn_fifo> m_evtchn_fifo;
 
 public:
 
     /// @cond
-
     xen_op_handler(xen_op_handler &&) = default;
     xen_op_handler &operator=(xen_op_handler &&) = default;
 
