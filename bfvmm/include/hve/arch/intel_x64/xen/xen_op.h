@@ -25,7 +25,8 @@
 
 #include "public/xen.h"
 #include "public/arch-x86/cpuid.h"
-#include "evtchn_fifo.h"
+#include "evtchn_op.h"
+#include "sched_op.h"
 
 #include <eapis/hve/arch/intel_x64/vmexit/cpuid.h>
 #include <eapis/hve/arch/intel_x64/vmexit/wrmsr.h>
@@ -173,6 +174,9 @@ private:
     void EVTCHNOP_init_control_handler(gsl::not_null<vcpu *> vcpu);
     void EVTCHNOP_send_handler(gsl::not_null<vcpu *> vcpu);
 
+    bool HYPERVISOR_sched_op(gsl::not_null<vcpu_t *> vcpu);
+    void SCHEDOP_yield_handler(gsl::not_null<vcpu *> vcpu);
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
@@ -188,7 +192,7 @@ private:
 
 private:
 
-    uint64_t m_cpu_frequency;
+    uint64_t m_tsc_frequency;
     std::unordered_map<uint32_t, uint64_t> m_msrs;
 
 private:
@@ -198,7 +202,8 @@ private:
     uint64_t m_hypercall_page_gpa{};
     eapis::x64::unique_map<shared_info_t> m_shared_info;
     eapis::x64::unique_map<uint8_t> m_console;
-    std::unique_ptr<hyperkernel::intel_x64::evtchn_fifo> m_evtchn_fifo;
+    std::unique_ptr<hyperkernel::intel_x64::evtchn_op> m_evtchn_op;
+    std::unique_ptr<hyperkernel::intel_x64::sched_op> m_sched_op;
 
 public:
 

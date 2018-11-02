@@ -595,6 +595,7 @@ setup_xen_shared_info_page()
         return FAILURE;
     }
 
+    memset((char *)g_reserved_6000, 0, 0x1000);
     ret = domain_op__map_gpa((uint64_t)g_reserved_6000, 0x6000, MAP_RW);
     if (ret != BF_SUCCESS) {
         BFALERT("__domain_op__map_gpa failed\n");

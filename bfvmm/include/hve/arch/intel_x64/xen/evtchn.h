@@ -64,8 +64,6 @@ public:
     /// @expects
     /// @ensures
     ///
-    /// @param vcpu the vcpu of the evtchn_fifo
-    ///
     evtchn() = default;
 
     /// Destructor
@@ -132,7 +130,7 @@ private:
     vcpuid_t m_prev_vcpuid{};
 
     evtchn_port_t m_port{};
-    mutable std::mutex m_mutex{};
+    /// TODO mutable std::mutex m_mutex{};
 
 public:
 

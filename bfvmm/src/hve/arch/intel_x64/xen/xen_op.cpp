@@ -31,7 +31,8 @@
 #include <hve/arch/intel_x64/xen/public/arch-x86/cpuid.h>
 
 #include <hve/arch/intel_x64/xen/xen_op.h>
-#include <hve/arch/intel_x64/xen/evtchn_fifo.h>
+#include <hve/arch/intel_x64/xen/sched_op.h>
+#include <hve/arch/intel_x64/xen/evtchn_op.h>
 #include "../../../../../../include/gpa_layout.h"
 
 // wrmsr_safe(0xC0000600, dec, 0);
@@ -80,10 +81,6 @@ constexpr auto xen_msr_debug_nhex       = 0xC0000700;
     m_vcpu->emulate_io_instruction(                                                                 \
         a, make_delegate(io_instruction_handler, b), make_delegate(io_instruction_handler, c))
 
-//#define ADD_EPT_WRITE_HANDLER(a)                                                                    \
-//    m_vcpu->add_ept_write_violation_handler(                                                        \
-//        make_delegate(ept_violation_handler, a))
-//
 // =============================================================================
 // Implementation
 // =============================================================================
@@ -91,11 +88,13 @@ constexpr auto xen_msr_debug_nhex       = 0xC0000700;
 namespace hyperkernel::intel_x64
 {
 
+static uint64_t tsc_frequency(void);
+
 xen_op_handler::xen_op_handler(
     gsl::not_null<vcpu *> vcpu
 ) :
     m_vcpu{vcpu},
-    m_evtchn_fifo{std::make_unique<evtchn_fifo>(vcpu, this)}
+    m_evtchn_op{nullptr}
 {
     using namespace vmcs_n;
 
@@ -120,6 +119,7 @@ xen_op_handler::xen_op_handler(
     ADD_VMCALL_HANDLER(HYPERVISOR_xen_version);
     ADD_VMCALL_HANDLER(HYPERVISOR_hvm_op);
     ADD_VMCALL_HANDLER(HYPERVISOR_event_channel_op);
+    ADD_VMCALL_HANDLER(HYPERVISOR_sched_op);
 
     if (vcpu->is_domU()) {
         vcpu->trap_on_all_io_instruction_accesses();
@@ -175,13 +175,14 @@ xen_op_handler::xen_op_handler(
     EMULATE_IO_INSTRUCTION(0xCFE, io_ones_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0xCFF, io_ones_handler, io_ignore_handler);
 
-    //ADD_EPT_WRITE_HANDLER(xapic_icr_write);
-
     this->register_unplug_quirk();
+
+    m_evtchn_op = std::make_unique<evtchn_op>(vcpu, this);
+    m_sched_op = std::make_unique<sched_op>(vcpu, tsc_frequency());
 }
 
 static uint64_t
-cpu_frequency(void)
+tsc_frequency(void)
 {
     using namespace ::x64::cpuid;
     using namespace ::intel_x64::cpuid;
@@ -259,12 +260,12 @@ cpu_frequency(void)
 
         auto bus = eapis::intel_x64::time::bus_freq_MHz();
         auto tsc = eapis::intel_x64::time::tsc_freq_MHz(bus);
-        auto pet = eapis::intel_x64::time::pet_freq_MHz(tsc);
+//        auto pet = eapis::intel_x64::time::pet_freq_MHz(tsc);
 
-        bfdebug_ndec(0, "TSC (kHz)", tsc * 1000);
-        bfdebug_ndec(0, "PET (kHz)", pet * 1000);
+//        bfdebug_ndec(0, "TSC (kHz)", tsc * 1000);
+//        bfdebug_ndec(0, "PET (kHz)", pet * 1000);
 
-        return tsc;
+        return tsc * 1000;
     }
     else {
         freq /= 1000;
@@ -869,6 +870,42 @@ xen_op_handler::XENVER_get_features_handler(
 }
 
 // -----------------------------------------------------------------------------
+// HYPERVISOR_sched_op
+// -----------------------------------------------------------------------------
+
+bool
+xen_op_handler::HYPERVISOR_sched_op(gsl::not_null<vcpu_t *> vcpu)
+{
+    if (vcpu->rax() != __HYPERVISOR_sched_op) {
+        return false;
+    }
+
+    switch (vcpu->rdi()) {
+        case SCHEDOP_yield:
+            this->SCHEDOP_yield_handler(m_vcpu);
+            return true;
+
+        default:
+            break;
+    };
+
+    throw std::runtime_error("unknown HYPERVISOR_sched_op: " +
+                             std::to_string(vcpu->rdi()));
+}
+
+void
+xen_op_handler::SCHEDOP_yield_handler(gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        m_sched_op->handle_yield(vcpu);
+        vcpu->set_rax(SUCCESS);
+    }
+    catchall({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
+// -----------------------------------------------------------------------------
 // HYPERVISOR_event_channel_op
 // -----------------------------------------------------------------------------
 
@@ -901,8 +938,7 @@ xen_op_handler::EVTCHNOP_init_control_handler(gsl::not_null<vcpu *> vcpu)
 {
     try {
         auto ctl = vcpu->map_arg<evtchn_init_control_t>(vcpu->rsi());
-        m_evtchn_fifo->init_control(ctl.get());
-
+        m_evtchn_op->init_control(ctl.get());
         vcpu->set_rax(SUCCESS);
     }
     catchall({
@@ -915,15 +951,13 @@ xen_op_handler::EVTCHNOP_send_handler(gsl::not_null<vcpu *> vcpu)
 {
     try {
         auto send = vcpu->map_arg<evtchn_send_t>(vcpu->rsi());
-        m_evtchn_fifo->send(send.get());
-
+        m_evtchn_op->send(send.get());
         vcpu->set_rax(SUCCESS);
     }
     catchall({
         vcpu->set_rax(FAILURE);
     })
 }
-
 
 // -----------------------------------------------------------------------------
 // HYPERVISOR_hvm_op
@@ -1023,7 +1057,7 @@ void
 xen_op_handler::reset_vcpu_time_info()
 {
     expects(m_shared_info);
-    m_cpu_frequency = cpu_frequency();
+    m_tsc_frequency = tsc_frequency();
 
     /// The equation for tsc_to_system_mul is the following:
     /// - tsc_to_system_mul = (10^9 << 32) / (CPU freq Hz)
@@ -1040,7 +1074,7 @@ xen_op_handler::reset_vcpu_time_info()
     auto &info = m_shared_info->vcpu_info[0].time;
 
     info.tsc_shift = 0;
-    info.tsc_to_system_mul = (GHz << 32) / (m_cpu_frequency * 1000);
+    info.tsc_to_system_mul = (GHz << 32) / (m_tsc_frequency * 1000);
     info.flags = XEN_PVCLOCK_TSC_STABLE_BIT;
 }
 
@@ -1069,7 +1103,7 @@ xen_op_handler::update_vcpu_time_info()
 
     info.version = 1;
     info.tsc_timestamp = ::x64::read_tsc::get();
-    info.system_time = (info.tsc_timestamp * 1000) / (m_cpu_frequency / 1000);
+    info.system_time = (info.tsc_timestamp * 1000) / (m_tsc_frequency / 1000);
     info.version = 0;
 }
 

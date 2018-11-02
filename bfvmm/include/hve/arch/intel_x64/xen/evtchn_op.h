@@ -16,11 +16,11 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-#ifndef EVTCHN_FIFO_INTEL_X64_HYPERKERNEL_H
-#define EVTCHN_FIFO_INTEL_X64_HYPERKERNEL_H
+#ifndef EVTCHNOP_INTEL_X64_HYPERKERNEL_H
+#define EVTCHNOP_INTEL_X64_HYPERKERNEL_H
 
-#include <atomic>
 #include <mutex>
+#include <atomic>
 
 #include "../base.h"
 #include "public/event_channel.h"
@@ -62,7 +62,7 @@ struct evtchn_fifo_queue {
     std::mutex lock;
 };
 
-class EXPORT_HYPERKERNEL_HVE evtchn_fifo
+class EXPORT_HYPERKERNEL_HVE evtchn_op
 {
 public:
 
@@ -83,9 +83,9 @@ public:
     /// @expects
     /// @ensures
     ///
-    /// @param vcpu the vcpu of the evtchn_fifo
+    /// @param vcpu the vcpu of the evtchn_op
     ///
-    evtchn_fifo(
+    evtchn_op(
         gsl::not_null<vcpu *> vcpu,
         gsl::not_null<xen_op_handler *> handler
     );
@@ -95,7 +95,7 @@ public:
     /// @expects
     /// @ensures
     ///
-    ~evtchn_fifo() = default;
+    ~evtchn_op() = default;
 
     /// Init control
     ///
@@ -123,7 +123,9 @@ private:
     static constexpr auto chan_per_group = chan_per_bucket * bucket_per_group;
     static constexpr auto event_group_capacity = chan_capacity / chan_per_group;
 
+    //
     // Member functions
+    //
     evtchn_port_t make_new_port();
     int make_port(evtchn_port_t port);
     void make_bucket(evtchn_port_t port);
@@ -135,11 +137,7 @@ private:
     chan_t *port_to_chan(port_t port) const;
     word_t *port_to_word(port_t port) const;
 
-    uint64_t word_count() const;
     uint64_t chan_count() const;
-
-    event_word_t read_event_word(port_t port);
-    void write_event_word(port_t port, event_word_t val);
 
     bool port_is_valid(port_t port) const;
     bool port_is_pending(port_t port) const;
@@ -174,11 +172,11 @@ public:
 
     /// @cond
 
-    evtchn_fifo(evtchn_fifo &&) = default;
-    evtchn_fifo &operator=(evtchn_fifo &&) = default;
+    evtchn_op(evtchn_op &&) = default;
+    evtchn_op &operator=(evtchn_op &&) = default;
 
-    evtchn_fifo(const evtchn_fifo &) = delete;
-    evtchn_fifo &operator=(const evtchn_fifo &) = delete;
+    evtchn_op(const evtchn_op &) = delete;
+    evtchn_op &operator=(const evtchn_op &) = delete;
 
     /// @endcond
 };

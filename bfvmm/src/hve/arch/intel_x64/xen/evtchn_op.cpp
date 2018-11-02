@@ -17,21 +17,24 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 #include <bfgsl.h>
+#include <bfcallonce.h>
 
-#include <string.h>
 #include <errno.h>
+#include <string.h>
 
 #include <hve/arch/intel_x64/vcpu.h>
-#include <hve/arch/intel_x64/xen/evtchn_fifo.h>
+#include <hve/arch/intel_x64/xen/evtchn_op.h>
 
 // =============================================================================
 // Implementation
 // =============================================================================
 
+static bfn::once_flag g_flag{};
+
 namespace hyperkernel::intel_x64
 {
 
-evtchn_fifo::evtchn_fifo(
+evtchn_op::evtchn_op(
     gsl::not_null<vcpu *> vcpu,
     gsl::not_null<xen_op_handler *> handler)
 :
@@ -45,27 +48,28 @@ evtchn_fifo::evtchn_fifo(
     auto chan = this->port_to_chan(0);
     chan->set_state(evtchn::reserved);
 
-    bfdebug_nhex(0, "chan_capacity", chan_capacity);
-    bfdebug_nhex(0, "word_per_page", word_per_page);
-    bfdebug_nhex(0, "event_word_capacity", event_word_capacity);
-
-    bfdebug_nhex(0, "bucket_per_group", bucket_per_group);
-    bfdebug_nhex(0, "chan_per_bucket", chan_per_bucket);
-    bfdebug_nhex(0, "chan_per_group", chan_per_group);
-    bfdebug_nhex(0, "event_group_capacity", event_group_capacity);
-
-    bfdebug_nhex(0, "evtchn_size", evtchn_size);
+//    bfn::call_once(g_flag, [&]() {
+//        bfdebug_nhex(0, "chan_capacity", chan_capacity);
+//        bfdebug_ndec(0, "word_per_page", word_per_page);
+//        bfdebug_ndec(0, "event_word_capacity", event_word_capacity);
+//
+//        bfdebug_ndec(0, "bucket_per_group", bucket_per_group);
+//        bfdebug_ndec(0, "chan_per_bucket", chan_per_bucket);
+//        bfdebug_ndec(0, "chan_per_group", chan_per_group);
+//        bfdebug_ndec(0, "event_group_capacity", event_group_capacity);
+//
+//        bfdebug_ndec(0, "evtchn_size", evtchn_size);
+//    });
 }
 
 void
-evtchn_fifo::init_control(gsl::not_null<evtchn_init_control_t *> ctl)
+evtchn_op::init_control(gsl::not_null<evtchn_init_control_t *> ctl)
 {
     // TODO: We probably should bring down the whole system due to invalid
     // guest arguments. Xen returns error codes like -EINVAL in rax
-    bfdebug_nhex(0, "ctl->vcpu", ctl->vcpu);
-    bfdebug_nhex(0, "m_vcpu->id", m_vcpu->id());
 
-//    expects(ctl->vcpu == m_vcpu->id()); the guest passes 0x10
+    // expects(ctl->vcpu == m_vcpu->id()); the guest passes 0x10
+
     expects(ctl->offset <= (0x1000 - sizeof(evtchn_fifo_control_block_t)));
     expects(bfn::lower(ctl->offset, 3) == 0);
 
@@ -77,7 +81,7 @@ evtchn_fifo::init_control(gsl::not_null<evtchn_init_control_t *> ctl)
 }
 
 void
-evtchn_fifo::send(gsl::not_null<evtchn_send_t *> send)
+evtchn_op::send(gsl::not_null<evtchn_send_t *> send)
 {
     auto port = send->port;
 
@@ -85,16 +89,14 @@ evtchn_fifo::send(gsl::not_null<evtchn_send_t *> send)
         throw std::invalid_argument("send: invalid port: " +
                                     std::to_string(port));
     }
-
-//    auto chan = this->port_to_chan(port);
 }
 
 // =============================================================================
-// Internals
+// Private bits
 // =============================================================================
 
 evtchn_port_t
-evtchn_fifo::make_new_port()
+evtchn_op::make_new_port()
 {
     for (evtchn_port_t p = 1; p < chan_capacity; p++) {
         if (this->make_port(p) == -EBUSY) {
@@ -107,7 +109,7 @@ evtchn_fifo::make_new_port()
 }
 
 int
-evtchn_fifo::make_port(evtchn_port_t port)
+evtchn_op::make_port(evtchn_port_t port)
 {
     if (port >= chan_capacity) {
         throw std::invalid_argument("make_port: invalid_port: " +
@@ -136,13 +138,13 @@ evtchn_fifo::make_port(evtchn_port_t port)
 }
 
 void
-evtchn_fifo::make_bucket(evtchn_port_t port)
+evtchn_op::make_bucket(evtchn_port_t port)
 {
     const auto cur = m_event_group.size();
     const auto cap = m_event_group.capacity();
 
     if (GSL_UNLIKELY(cur == cap)) {
-        throw std::runtime_error("evtchn_fifo: out of buckets");
+        throw std::runtime_error("evtchn_op: out of buckets");
     }
 
     auto bucket = make_page<chan_t>();
@@ -161,7 +163,7 @@ evtchn_fifo::make_bucket(evtchn_port_t port)
 }
 
 void
-evtchn_fifo::setup_ports()
+evtchn_op::setup_ports()
 {
     for (auto p = 1; p < chan_capacity; p++) {
         if (!this->port_is_valid(p)) {
@@ -177,13 +179,13 @@ evtchn_fifo::setup_ports()
         if (is_bit_set(bit, val)) {
             auto chan = this->port_to_chan(p);
             chan->set_pending();
-            bfalert_nhex(0, "pending event at port:", p);
+            //bfalert_nhex(0, "pending event at port:", p);
         }
     }
 }
 
 void
-evtchn_fifo::setup_control_block()
+evtchn_op::setup_control_block()
 {
     for (auto i = 0; i <= EVTCHN_FIFO_PRIORITY_MIN; i++) {
         m_queues[i].priority = i;
@@ -191,7 +193,7 @@ evtchn_fifo::setup_control_block()
 }
 
 void
-evtchn_fifo::map_control_block(uint64_t gfn, uint32_t offset)
+evtchn_op::map_control_block(uint64_t gfn, uint32_t offset)
 {
     m_ctl_blk_ump =
         m_vcpu->map_gpa_4k<uint8_t>(gfn << ::x64::pt::page_shift);
@@ -208,8 +210,8 @@ evtchn_fifo::map_control_block(uint64_t gfn, uint32_t offset)
     }
 }
 
-evtchn_fifo::chan_t *
-evtchn_fifo::port_to_chan(port_t port) const
+evtchn_op::chan_t *
+evtchn_op::port_to_chan(port_t port) const
 {
     auto grp_idx = port / chan_per_group;
     auto bkt_idx = port % chan_per_group / chan_per_bucket;
@@ -222,17 +224,17 @@ evtchn_fifo::port_to_chan(port_t port) const
 
     auto chan = &bkt_ptr[bkt_idx];
 
-    bfdebug_nhex(0, "port_to_chan: ", port);
-    bfdebug_subnhex(0, "state: ", chan->state());
-    bfdebug_subbool(0, "pending: ", chan->is_pending());
-    bfdebug_subnhex(0, "priority: ", chan->priority());
-    bfdebug_subnhex(0, "port: ", chan->port());
+    //bfdebug_nhex(0, "port_to_chan: ", port);
+    //bfdebug_subnhex(0, "state: ", chan->state());
+    //bfdebug_subbool(0, "pending: ", chan->is_pending());
+    //bfdebug_subnhex(0, "priority: ", chan->priority());
+    //bfdebug_subnhex(0, "port: ", chan->port());
 
     return chan;
 }
 
-evtchn_fifo::word_t *
-evtchn_fifo::port_to_word(port_t port) const
+evtchn_op::word_t *
+evtchn_op::port_to_word(port_t port) const
 {
     auto page_idx = port / word_per_page;
     auto word_idx = port % word_per_page;
@@ -247,82 +249,78 @@ evtchn_fifo::port_to_word(port_t port) const
 }
 
 uint64_t
-evtchn_fifo::word_count() const
-{ return m_event_word.size() * word_per_page; }
-
-uint64_t
-evtchn_fifo::chan_count() const
+evtchn_op::chan_count() const
 { return m_valid_chans.load(); }
 
-bool evtchn_fifo::port_is_valid(port_t port) const
+bool evtchn_op::port_is_valid(port_t port) const
 { return port < chan_count(); }
 
-bool evtchn_fifo::port_is_pending(port_t port) const
+bool evtchn_op::port_is_pending(port_t port) const
 {
     auto word = this->port_to_word(port);
     return is_bit_set(word->load(), EVTCHN_FIFO_PENDING);
 }
 
-bool evtchn_fifo::port_is_masked(port_t port) const
+bool evtchn_op::port_is_masked(port_t port) const
 {
     auto word = this->port_to_word(port);
     return is_bit_set(word->load(), EVTCHN_FIFO_MASKED); }
 
-bool evtchn_fifo::port_is_linked(port_t port) const
+bool evtchn_op::port_is_linked(port_t port) const
 {
     auto word = this->port_to_word(port);
     return is_bit_set(word->load(), EVTCHN_FIFO_LINKED);
 }
 
-bool evtchn_fifo::port_is_busy(port_t port) const
+bool evtchn_op::port_is_busy(port_t port) const
 {
     auto word = this->port_to_word(port);
     return is_bit_set(word->load(), EVTCHN_FIFO_BUSY);
 }
 
-void evtchn_fifo::port_set_pending(port_t port)
+void evtchn_op::port_set_pending(port_t port)
 {
     auto word = this->port_to_word(port);
     word->fetch_or(1U << EVTCHN_FIFO_PENDING);
 }
 
-void evtchn_fifo::port_set_masked(port_t port)
+void evtchn_op::port_set_masked(port_t port)
 {
     auto word = this->port_to_word(port);
     word->fetch_or(1U << EVTCHN_FIFO_MASKED);
 }
 
-void evtchn_fifo::port_set_linked(port_t port)
+void evtchn_op::port_set_linked(port_t port)
 {
     auto word = this->port_to_word(port);
     word->fetch_or(1U << EVTCHN_FIFO_LINKED);
 }
 
-void evtchn_fifo::port_set_busy(port_t port)
+void evtchn_op::port_set_busy(port_t port)
 {
     auto word = this->port_to_word(port);
     word->fetch_or(1U << EVTCHN_FIFO_BUSY);
 }
 
-void evtchn_fifo::port_clear_pending(port_t port)
+void evtchn_op::port_clear_pending(port_t port)
 {
     auto word = this->port_to_word(port);
     word->fetch_and(~(1U << EVTCHN_FIFO_PENDING));
 }
 
-void evtchn_fifo::port_clear_masked(port_t port)
+void evtchn_op::port_clear_masked(port_t port)
 {
     auto word = this->port_to_word(port);
     word->fetch_and(~(1U << EVTCHN_FIFO_MASKED));
 }
 
-void evtchn_fifo::port_clear_linked(port_t port)
+void evtchn_op::port_clear_linked(port_t port)
 {
     auto word = this->port_to_word(port);
     word->fetch_and(~(1U << EVTCHN_FIFO_LINKED));
 }
 
-void evtchn_fifo::port_clear_busy(port_t port)
+void evtchn_op::port_clear_busy(port_t port)
 {
     auto word = this->port_to_word(port);
     word->fetch_and(~(1U << EVTCHN_FIFO_BUSY));

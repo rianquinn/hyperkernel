@@ -19,6 +19,8 @@
 #ifndef VCPU_INTEL_X64_HYPERKERNEL_H
 #define VCPU_INTEL_X64_HYPERKERNEL_H
 
+#include <queue>
+
 #include "vmexit/external_interrupt.h"
 #include "vmexit/fault.h"
 #include "vmexit/vmcall.h"
@@ -267,6 +269,32 @@ public:
     ///
     std::vector<e820_entry_t> &e820_map();
 
+    //------------------------------------------------------------------------------
+    // Scheduling
+    //------------------------------------------------------------------------------
+
+    /// Schedule Enqueue
+    ///
+    /// Put the provided vcpu into the back of this vcpu's schedule queue. Each
+    /// time this vcpu handles a VMX timer exit, the vcpu at the front of this
+    /// queue will be scheduled to run
+    ///
+    /// @param vcpu the vcpu to add to the queue
+    ///
+    void schedule_enqueue(gsl::not_null<vcpu *> vcpu);
+
+    /// Schedule Dequeue
+    ///
+    /// Remove the provided vcpu from the front of this vcpu's schedule queue.
+    ///
+    void schedule_dequeue();
+
+    /// Schedule Next
+    ///
+    /// @return the address of the next vcpu to schedule
+    ///
+    gsl::not_null<vcpu *> schedule_next() const;
+
 private:
 
     domain *m_domain{};
@@ -284,6 +312,7 @@ private:
 
     bool m_killed{};
     vcpu *m_parent_vcpu{};
+    std::queue<vcpu *> m_schedule_queue;
 };
 
 }
