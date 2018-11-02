@@ -124,37 +124,41 @@ private:
     static constexpr auto event_group_capacity = chan_capacity / chan_per_group;
 
     // Member functions
-    void make_bucket();
+    evtchn_port_t make_new_port();
+    int make_port(evtchn_port_t port);
+    void make_bucket(evtchn_port_t port);
 
     void setup_ports();
     void setup_control_block();
     void map_control_block(uint64_t gfn, uint32_t offset);
 
-    chan_t *port_to_chan(port_t port);
-    word_t *port_to_word(port_t port);
+    chan_t *port_to_chan(port_t port) const;
+    word_t *port_to_word(port_t port) const;
+
+    uint64_t word_count() const;
+    uint64_t chan_count() const;
 
     event_word_t read_event_word(port_t port);
     void write_event_word(port_t port, event_word_t val);
 
     bool port_is_valid(port_t port) const;
+    bool port_is_pending(port_t port) const;
+    bool port_is_masked(port_t port) const;
+    bool port_is_linked(port_t port) const;
+    bool port_is_busy(port_t port) const;
 
-    bool is_pending(word_t word) const;
-    bool is_masked(word_t word) const;
-    bool is_linked(word_t word) const;
-    bool is_busy(word_t word) const;
+    void port_set_pending(port_t port);
+    void port_set_masked(port_t port);
+    void port_set_linked(port_t port);
+    void port_set_busy(port_t port);
 
-    void set_pending(word_t word);
-    void set_masked(word_t word);
-    void set_linked(word_t word);
-    void set_busy(word_t word);
-
-    void clear_pending(word_t word);
-    void clear_masked(word_t word);
-    void clear_linked(word_t word);
-    void clear_busy(word_t word);
+    void port_clear_pending(port_t port);
+    void port_clear_masked(port_t port);
+    void port_clear_linked(port_t port);
+    void port_clear_busy(port_t port);
 
     // Data members
-    std::atomic<uint64_t> m_valid_channels{};
+    volatile std::atomic<uint64_t> m_valid_chans{};
 
     evtchn_fifo_control_block_t *m_ctl_blk{};
     eapis::x64::unique_map<uint8_t> m_ctl_blk_ump{};
