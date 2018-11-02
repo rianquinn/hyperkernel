@@ -64,11 +64,13 @@ class EXPORT_HYPERKERNEL_HVE evtchn_fifo
 {
 public:
 
-    /// A "port" is the address of an event word
+    /// A "port" is the address of an event word and
+    /// the address of an evtchn
     using port_t = evtchn_port_t;
     using word_t = std::atomic<event_word_t>;
     using chan_t = class evtchn;
     using queue_t = struct evtchn_fifo_queue;
+    using bucket_t = page_ptr<chan_t>;
 
     /// Constructor
     ///
@@ -96,22 +98,33 @@ public:
 
 private:
 
-    static constexpr auto max_nr_channels = EVTCHN_FIFO_NR_CHANNELS;
-    static constexpr auto event_words_per_page = ::x64::pt::page_size / sizeof(word_t);
-    static constexpr auto max_event_words_pages = max_nr_channels / event_words_per_page;
+    // Static members
+    //
+    // We distinguish between channel capacity and the
+    // current channel size in exactly the same way std::vector does.
+    //
+    static constexpr auto chan_capacity = EVTCHN_FIFO_NR_CHANNELS;
+    static constexpr auto word_per_page = ::x64::pt::page_size / sizeof(word_t);
+    static constexpr auto event_word_capacity = chan_capacity / word_per_page;
 
     // Each evtchn must be aligned to evtchn_size for this to be right
-    static constexpr auto evtchns_per_page = ::x64::pt::page_size / evtchn_size;
-    static constexpr auto max_event_chans_pages = max_nr_channels / evtchns_per_page;
+    static constexpr auto bucket_per_group = ::x64::pt::page_size / sizeof(bucket_t);
+    static constexpr auto chan_per_bucket = ::x64::pt::page_size / evtchn_size;
+    static constexpr auto chan_per_group = chan_per_bucket * bucket_per_group;
+    static constexpr auto event_group_capacity = chan_capacity / chan_per_group;
 
+    // Member functions
     void setup_control_block();
     void map_control_block(uint64_t gfn, uint32_t offset);
 
-    word_t *word_from_port(port_t port);
+    chan_t *port_to_chan(port_t port);
+    word_t *port_to_word(port_t port);
+
     event_word_t read_event_word(port_t port);
     void write_event_word(port_t port, event_word_t val);
 
-    uint64_t nr_channels() const;
+    uint64_t word_count() const;
+    uint64_t chan_count() const;
     bool port_is_valid(port_t port) const;
 
     bool is_pending(word_t word) const;
@@ -136,8 +149,8 @@ private:
     eapis::x64::unique_map<uint8_t> m_ctl_blk_ump{};
     std::array<queue_t, EVTCHN_FIFO_MAX_QUEUES> m_queues{};
 
-    std::vector<page_ptr<word_t>> m_event_words{};
-    std::vector<page_ptr<chan_t>> m_event_chans{};
+    std::vector<page_ptr<word_t>> m_event_word{};
+    std::vector<page_ptr<chan_t>> m_event_group{};
 
     vcpu *m_vcpu;
 

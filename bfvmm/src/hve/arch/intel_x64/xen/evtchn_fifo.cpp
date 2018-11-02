@@ -30,8 +30,8 @@ evtchn_fifo::evtchn_fifo(gsl::not_null<vcpu *> vcpu)
 :
     m_vcpu{vcpu}
 {
-    m_event_words.reserve(max_event_words_pages);
-    m_event_chans.reserve(max_event_chans_pages);
+    m_event_word.reserve(event_word_capacity);
+    m_event_group.reserve(event_group_capacity);
 }
 
 void
@@ -59,10 +59,65 @@ evtchn_fifo::init_control(gsl::not_null<evtchn_init_control_t *> ctl)
     //   -- set priority
 }
 
+//{
+//    struct evtchn *lchn, *rchn;
+//    struct domain *rd;
+//    int            rport, ret = 0;
+//
+//    if ( !port_is_valid(ld, lport) )
+//        return -EINVAL;
+//
+//    lchn = evtchn_from_port(ld, lport);
+//
+//    spin_lock(&lchn->lock);
+//
+//    /* Guest cannot send via a Xen-attached event channel. */
+//    if ( unlikely(consumer_is_xen(lchn)) )
+//    {
+//        ret = -EINVAL;
+//        goto out;
+//    }
+//
+//    ret = xsm_evtchn_send(XSM_HOOK, ld, lchn);
+//    if ( ret )
+//        goto out;
+//
+//    switch ( lchn->state )
+//    {
+//    case ECS_INTERDOMAIN:
+//        rd    = lchn->u.interdomain.remote_dom;
+//        rport = lchn->u.interdomain.remote_port;
+//        rchn  = evtchn_from_port(rd, rport);
+//        if ( consumer_is_xen(rchn) )
+//            xen_notification_fn(rchn)(rd->vcpu[rchn->notify_vcpu_id], rport);
+//        else
+//            evtchn_port_set_pending(rd, rchn->notify_vcpu_id, rchn);
+//        break;
+//    case ECS_IPI:
+//        evtchn_port_set_pending(ld, lchn->notify_vcpu_id, lchn);
+//        break;
+//    case ECS_UNBOUND:
+//        /* silently drop the notification */
+//        break;
+//    default:
+//        ret = -EINVAL;
+//    }
+//
+//out:
+//    spin_unlock(&lchn->lock);
+//
+//    return ret;
+//}
+
 void
 evtchn_fifo::send(gsl::not_null<evtchn_send_t *> send)
 {
+    if (!this->port_is_valid(send->port)) {
+        m_vcpu->set_rax(FAILURE);
+        return;
+    }
 
+    auto chn = this->port_to_chan(send->port);
 
 }
 
@@ -96,12 +151,22 @@ evtchn_fifo::map_control_block(uint64_t gfn, uint32_t offset)
     }
 }
 
-evtchn_fifo::word_t *
-evtchn_fifo::word_from_port(port_t port)
+evtchn_fifo::chan_t *
+evtchn_fifo::port_to_chan(port_t port)
 {
-    auto page_idx = port / event_words_per_page;
-    auto word_idx = port % event_words_per_page;
-    auto page_ptr = m_event_words.at(page_idx).get();
+    auto grp_idx = port / chan_per_group;
+    auto bkt_idx = port % chan_per_group / chan_per_bucket;
+    auto bkt_ptr = m_event_group.at(grp_idx).get();
+
+    return &bkt_ptr[bkt_idx];
+}
+
+evtchn_fifo::word_t *
+evtchn_fifo::port_to_word(port_t port)
+{
+    auto page_idx = port / word_per_page;
+    auto word_idx = port % word_per_page;
+    auto page_ptr = m_event_word.at(page_idx).get();
 
     return &page_ptr[word_idx];
 }
@@ -109,25 +174,29 @@ evtchn_fifo::word_from_port(port_t port)
 event_word_t
 evtchn_fifo::read_event_word(port_t port)
 {
-    auto word = this->word_from_port(port);
+    auto word = this->port_to_word(port);
     return word->load();
 }
 
 void
 evtchn_fifo::write_event_word(port_t port, event_word_t val)
 {
-    auto word = this->word_from_port(port);
+    auto word = this->port_to_word(port);
     return word->store(val);
 }
 
 uint64_t
-evtchn_fifo::nr_channels() const
-{ return m_event_words.size() * event_words_per_page; }
+evtchn_fifo::chan_count() const
+{ return m_event_group.size() * chan_per_group; }
+
+uint64_t
+evtchn_fifo::word_count() const
+{ return m_event_word.size() * word_per_page; }
 
 bool
 evtchn_fifo::port_is_valid(port_t p) const
 {
-    if (p >= max_nr_channels) {
+    if (p >= chan_capacity) {
         return 0;
     }
     return p < m_valid_channels.load();
