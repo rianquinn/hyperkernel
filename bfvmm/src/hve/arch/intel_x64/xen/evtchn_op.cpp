@@ -63,7 +63,8 @@ evtchn_op::evtchn_op(
 }
 
 void
-evtchn_op::init_control(gsl::not_null<evtchn_init_control_t *> ctl)
+evtchn_op::init_control(
+    gsl::not_null<evtchn_init_control_t *> ctl)
 {
     // TODO: We probably should bring down the whole system due to invalid
     // guest arguments. Xen returns error codes like -EINVAL in rax

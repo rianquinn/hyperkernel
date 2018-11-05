@@ -130,7 +130,7 @@ vmcall_vcpu_op_handler::vcpu_op__destroy_vcpu(
 
 bool
 vmcall_vcpu_op_handler::dispatch(
-    gsl::not_null<vcpu_t *> vcpu)
+    gsl::not_null<vcpu *> vcpu)
 {
     if (vcpu->rax() != __enum_vcpu_op) {
         return false;
@@ -138,27 +138,27 @@ vmcall_vcpu_op_handler::dispatch(
 
     switch(vcpu->rbx()) {
         case __enum_vcpu_op__create_vcpu:
-            this->vcpu_op__create_vcpu(m_vcpu);
+            this->vcpu_op__create_vcpu(vcpu);
             return true;
 
         case __enum_vcpu_op__run_vcpu:
-            this->vcpu_op__run_vcpu(m_vcpu);
+            this->vcpu_op__run_vcpu(vcpu);
             return true;
 
         case __enum_vcpu_op__set_rip:
-            this->vcpu_op__set_rip(m_vcpu);
+            this->vcpu_op__set_rip(vcpu);
             return true;
 
         case __enum_vcpu_op__set_rbx:
-            this->vcpu_op__set_rbx(m_vcpu);
+            this->vcpu_op__set_rbx(vcpu);
             return true;
 
         case __enum_vcpu_op__hlt_vcpu:
-            this->vcpu_op__hlt_vcpu(m_vcpu);
+            this->vcpu_op__hlt_vcpu(vcpu);
             return true;
 
         case __enum_vcpu_op__destroy_vcpu:
-            this->vcpu_op__destroy_vcpu(m_vcpu);
+            this->vcpu_op__destroy_vcpu(vcpu);
             return true;
 
         default:

@@ -156,25 +156,23 @@ private:
     // VMCalls
     // -------------------------------------------------------------------------
 
-    // TODO: I'm a bit confused about the two vcpu types and why we pass
-    // m_vcpu to the subhandlers rather than the HYPERVISOR @param vcpu
-    bool HYPERVISOR_memory_op(gsl::not_null<vcpu_t *> vcpu);
+    bool HYPERVISOR_memory_op(gsl::not_null<vcpu *> vcpu);
     void XENMEM_add_to_physmap_handler(gsl::not_null<vcpu *> vcpu);
     void XENMEM_memory_map_handler(gsl::not_null<vcpu *> vcpu);
 
-    bool HYPERVISOR_xen_version(gsl::not_null<vcpu_t *> vcpu);
+    bool HYPERVISOR_xen_version(gsl::not_null<vcpu *> vcpu);
     void XENVER_get_features_handler(gsl::not_null<vcpu *> vcpu);
 
-    bool HYPERVISOR_hvm_op(gsl::not_null<vcpu_t *> vcpu);
+    bool HYPERVISOR_hvm_op(gsl::not_null<vcpu *> vcpu);
     void HVMOP_set_param_handler(gsl::not_null<vcpu *> vcpu);
     void HVMOP_get_param_handler(gsl::not_null<vcpu *> vcpu);
     void HVMOP_pagetable_dying_handler(gsl::not_null<vcpu *> vcpu);
 
-    bool HYPERVISOR_event_channel_op(gsl::not_null<vcpu_t *> vcpu);
+    bool HYPERVISOR_event_channel_op(gsl::not_null<vcpu *> vcpu);
     void EVTCHNOP_init_control_handler(gsl::not_null<vcpu *> vcpu);
     void EVTCHNOP_send_handler(gsl::not_null<vcpu *> vcpu);
 
-    bool HYPERVISOR_sched_op(gsl::not_null<vcpu_t *> vcpu);
+    bool HYPERVISOR_sched_op(gsl::not_null<vcpu *> vcpu);
     void SCHEDOP_yield_handler(gsl::not_null<vcpu *> vcpu);
 
     // -------------------------------------------------------------------------

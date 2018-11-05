@@ -69,7 +69,7 @@ private:
     void vcpu_op__hlt_vcpu(gsl::not_null<vcpu *> vcpu);
     void vcpu_op__destroy_vcpu(gsl::not_null<vcpu *> vcpu);
 
-    bool dispatch(gsl::not_null<vcpu_t *> vcpu);
+    bool dispatch(gsl::not_null<vcpu *> vcpu);
 
 private:
 

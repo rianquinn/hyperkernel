@@ -66,7 +66,7 @@ vmcall_bf86_op_handler::bf86_op__emulate_hlt(
 
 bool
 vmcall_bf86_op_handler::dispatch(
-    gsl::not_null<vcpu_t *> vcpu)
+    gsl::not_null<vcpu *> vcpu)
 {
     if (vcpu->rax() != __enum_bf86_op) {
         return false;
@@ -74,11 +74,11 @@ vmcall_bf86_op_handler::dispatch(
 
     switch(vcpu->rbx()) {
         case __enum_bf86_op__emulate_outb:
-            this->bf86_op__emulate_outb(m_vcpu);
+            this->bf86_op__emulate_outb(vcpu);
             return true;
 
         case __enum_bf86_op__emulate_hlt:
-            this->bf86_op__emulate_hlt(m_vcpu);
+            this->bf86_op__emulate_hlt(vcpu);
             return true;
 
         default:

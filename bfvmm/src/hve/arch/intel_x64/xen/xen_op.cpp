@@ -94,7 +94,7 @@ xen_op_handler::xen_op_handler(
     gsl::not_null<vcpu *> vcpu
 ) :
     m_vcpu{vcpu},
-    m_evtchn_op{nullptr}
+    m_evtchn_op{std::make_unique<evtchn_op>(vcpu, this)}
 {
     using namespace vmcs_n;
 
@@ -119,7 +119,7 @@ xen_op_handler::xen_op_handler(
     ADD_VMCALL_HANDLER(HYPERVISOR_xen_version);
     ADD_VMCALL_HANDLER(HYPERVISOR_hvm_op);
     ADD_VMCALL_HANDLER(HYPERVISOR_event_channel_op);
-    ADD_VMCALL_HANDLER(HYPERVISOR_sched_op);
+    // ADD_VMCALL_HANDLER(HYPERVISOR_sched_op);
 
     if (vcpu->is_domU()) {
         vcpu->trap_on_all_io_instruction_accesses();
@@ -177,8 +177,22 @@ xen_op_handler::xen_op_handler(
 
     this->register_unplug_quirk();
 
-    m_evtchn_op = std::make_unique<evtchn_op>(vcpu, this);
-    m_sched_op = std::make_unique<sched_op>(vcpu, tsc_frequency());
+    /// TODO:
+    ///
+    /// This currently gives the serial device to the guest. At some point we
+    /// will need to emulate these instead of passing them through which will
+    /// allow the hypervisor and the guest to co-exist. For now this works,
+    /// just make sure that the serial settings for the hypervisor and the
+    /// guest are identical.
+    ///
+    vcpu->pass_through_io_accesses(0x3f8);
+    vcpu->pass_through_io_accesses(0x3f9);
+    vcpu->pass_through_io_accesses(0x3fa);
+    vcpu->pass_through_io_accesses(0x3fb);
+    vcpu->pass_through_io_accesses(0x3fc);
+    vcpu->pass_through_io_accesses(0x3fd);
+
+    // m_sched_op = std::make_unique<sched_op>(vcpu, tsc_frequency());
 }
 
 static uint64_t
@@ -718,7 +732,7 @@ xen_op_handler::io_ignore_handler(
 
 bool
 xen_op_handler::HYPERVISOR_memory_op(
-    gsl::not_null<vcpu_t *> vcpu)
+    gsl::not_null<vcpu *> vcpu)
 {
     if (vcpu->rax() != __HYPERVISOR_memory_op) {
         return false;
@@ -726,11 +740,11 @@ xen_op_handler::HYPERVISOR_memory_op(
 
     switch (vcpu->rdi()) {
         case XENMEM_add_to_physmap:
-            this->XENMEM_add_to_physmap_handler(m_vcpu);
+            this->XENMEM_add_to_physmap_handler(vcpu);
             return true;
 
         case XENMEM_memory_map:
-            this->XENMEM_memory_map_handler(m_vcpu);
+            this->XENMEM_memory_map_handler(vcpu);
             return true;
 
         default:
@@ -812,7 +826,7 @@ xen_op_handler::XENMEM_memory_map_handler(
 
 bool
 xen_op_handler::HYPERVISOR_xen_version(
-    gsl::not_null<vcpu_t *> vcpu)
+    gsl::not_null<vcpu *> vcpu)
 {
     if (vcpu->rax() != __HYPERVISOR_xen_version) {
         return false;
@@ -820,7 +834,7 @@ xen_op_handler::HYPERVISOR_xen_version(
 
     switch (vcpu->rdi()) {
         case XENVER_get_features:
-            this->XENVER_get_features_handler(m_vcpu);
+            this->XENVER_get_features_handler(vcpu);
             return true;
 
         default:
@@ -874,7 +888,7 @@ xen_op_handler::XENVER_get_features_handler(
 // -----------------------------------------------------------------------------
 
 bool
-xen_op_handler::HYPERVISOR_sched_op(gsl::not_null<vcpu_t *> vcpu)
+xen_op_handler::HYPERVISOR_sched_op(gsl::not_null<vcpu *> vcpu)
 {
     if (vcpu->rax() != __HYPERVISOR_sched_op) {
         return false;
@@ -882,15 +896,15 @@ xen_op_handler::HYPERVISOR_sched_op(gsl::not_null<vcpu_t *> vcpu)
 
     switch (vcpu->rdi()) {
         case SCHEDOP_yield:
-            this->SCHEDOP_yield_handler(m_vcpu);
+            this->SCHEDOP_yield_handler(vcpu);
             return true;
 
         default:
             break;
     };
 
-    throw std::runtime_error("unknown HYPERVISOR_sched_op: " +
-                             std::to_string(vcpu->rdi()));
+    throw std::runtime_error(
+        "unknown HYPERVISOR_sched_op: " + std::to_string(vcpu->rdi()));
 }
 
 void
@@ -910,7 +924,8 @@ xen_op_handler::SCHEDOP_yield_handler(gsl::not_null<vcpu *> vcpu)
 // -----------------------------------------------------------------------------
 
 bool
-xen_op_handler::HYPERVISOR_event_channel_op(gsl::not_null<vcpu_t *> vcpu)
+xen_op_handler::HYPERVISOR_event_channel_op(
+    gsl::not_null<vcpu *> vcpu)
 {
     if (vcpu->rax() != __HYPERVISOR_event_channel_op) {
         return false;
@@ -918,11 +933,11 @@ xen_op_handler::HYPERVISOR_event_channel_op(gsl::not_null<vcpu_t *> vcpu)
 
     switch (vcpu->rdi()) {
         case EVTCHNOP_init_control:
-            this->EVTCHNOP_init_control_handler(m_vcpu);
+            this->EVTCHNOP_init_control_handler(vcpu);
             return true;
 
         case EVTCHNOP_send:
-            this->EVTCHNOP_send_handler(m_vcpu);
+            this->EVTCHNOP_send_handler(vcpu);
             return true;
 
         default:
@@ -934,11 +949,12 @@ xen_op_handler::HYPERVISOR_event_channel_op(gsl::not_null<vcpu_t *> vcpu)
 }
 
 void
-xen_op_handler::EVTCHNOP_init_control_handler(gsl::not_null<vcpu *> vcpu)
+xen_op_handler::EVTCHNOP_init_control_handler(
+    gsl::not_null<vcpu *> vcpu)
 {
     try {
-        auto ctl = vcpu->map_arg<evtchn_init_control_t>(vcpu->rsi());
-        m_evtchn_op->init_control(ctl.get());
+        auto arg = vcpu->map_arg<evtchn_init_control_t>(vcpu->rsi());
+        m_evtchn_op->init_control(arg.get());
         vcpu->set_rax(SUCCESS);
     }
     catchall({
@@ -947,11 +963,12 @@ xen_op_handler::EVTCHNOP_init_control_handler(gsl::not_null<vcpu *> vcpu)
 }
 
 void
-xen_op_handler::EVTCHNOP_send_handler(gsl::not_null<vcpu *> vcpu)
+xen_op_handler::EVTCHNOP_send_handler(
+    gsl::not_null<vcpu *> vcpu)
 {
     try {
-        auto send = vcpu->map_arg<evtchn_send_t>(vcpu->rsi());
-        m_evtchn_op->send(send.get());
+        auto arg = vcpu->map_arg<evtchn_send_t>(vcpu->rsi());
+        m_evtchn_op->send(arg.get());
         vcpu->set_rax(SUCCESS);
     }
     catchall({
@@ -965,7 +982,7 @@ xen_op_handler::EVTCHNOP_send_handler(gsl::not_null<vcpu *> vcpu)
 
 bool
 xen_op_handler::HYPERVISOR_hvm_op(
-    gsl::not_null<vcpu_t *> vcpu)
+    gsl::not_null<vcpu *> vcpu)
 {
     if (vcpu->rax() != __HYPERVISOR_hvm_op) {
         return false;
@@ -973,15 +990,15 @@ xen_op_handler::HYPERVISOR_hvm_op(
 
     switch (vcpu->rdi()) {
         case HVMOP_set_param:
-            this->HVMOP_set_param_handler(m_vcpu);
+            this->HVMOP_set_param_handler(vcpu);
             return true;
 
         case HVMOP_get_param:
-            this->HVMOP_get_param_handler(m_vcpu);
+            this->HVMOP_get_param_handler(vcpu);
             return true;
 
         case HVMOP_pagetable_dying:
-            this->HVMOP_pagetable_dying_handler(m_vcpu);
+            this->HVMOP_pagetable_dying_handler(vcpu);
             return true;
 
         default:
@@ -996,14 +1013,19 @@ xen_op_handler::HVMOP_set_param_handler(
     gsl::not_null<vcpu *> vcpu)
 {
     try {
-        auto arg = vcpu->map_arg<xen_hvm_param_t>(vcpu->rsi());
-        bfdebug_info(0, "HVMOP_set_param");
-        bfdebug_subnhex(0, "domid", arg->domid);
-        bfdebug_subnhex(0, "index", arg->index);
+        auto arg =
+            vcpu->map_arg<xen_hvm_param_t>(vcpu->rsi());
 
-// For now the only one they try to set is the hypervisor callback
-//        vcpu->set_rax(SUCCESS);
-        vcpu->set_rax(FAILURE);
+        switch (arg->index) {
+            default: {
+                bfdebug_info(0, "HVMOP_set_param: unknown");
+                bfdebug_subnhex(0, "domid", arg->domid);
+                bfdebug_subnhex(0, "index", arg->index);
+
+                vcpu->set_rax(FAILURE);
+                return;
+            }
+        };
     }
     catchall({
         vcpu->set_rax(FAILURE);
@@ -1015,10 +1037,8 @@ xen_op_handler::HVMOP_get_param_handler(
     gsl::not_null<vcpu *> vcpu)
 {
     try {
-        auto arg = vcpu->map_arg<xen_hvm_param_t>(vcpu->rsi());
-        bfdebug_info(0, "HVMOP_get_param");
-        bfdebug_subnhex(0, "domid", arg->domid);
-        bfdebug_subnhex(0, "index", arg->index);
+        auto arg =
+            vcpu->map_arg<xen_hvm_param_t>(vcpu->rsi());
 
         switch (arg->index) {
             case HVM_PARAM_CONSOLE_EVTCHN:
@@ -1031,7 +1051,14 @@ xen_op_handler::HVMOP_get_param_handler(
                 break;
             }
 
-            default: bfdebug_subnhex(0, "unknown param index:", arg->index);
+            default: {
+                bfdebug_info(0, "HVMOP_get_param: unknown");
+                bfdebug_subnhex(0, "domid", arg->domid);
+                bfdebug_subnhex(0, "index", arg->index);
+
+                vcpu->set_rax(FAILURE);
+                return;
+            }
         }
 
         vcpu->set_rax(SUCCESS);
@@ -1040,7 +1067,6 @@ xen_op_handler::HVMOP_get_param_handler(
         vcpu->set_rax(FAILURE);
     })
 }
-
 
 void
 xen_op_handler::HVMOP_pagetable_dying_handler(

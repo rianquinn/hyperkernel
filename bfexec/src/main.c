@@ -580,7 +580,7 @@ setup_xen_cmdline()
         return FAILURE;
     }
 
-    strcpy(g_reserved_5000->cmdline, cmdline);
+    strncpy(g_reserved_5000->cmdline, cmdline, 0x1000);
     return SUCCESS;
 }
 

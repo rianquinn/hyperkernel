@@ -208,13 +208,6 @@ vcpu::write_domU_guest_state(domain *domain)
     this->add_default_io_instruction_handler(
         ::handler_delegate_t::create<io_instruction_handler>()
     );
-
-    this->pass_through_io_accesses(0x3f8);
-    this->pass_through_io_accesses(0x3f9);
-    this->pass_through_io_accesses(0x3fa);
-    this->pass_through_io_accesses(0x3fb);
-    this->pass_through_io_accesses(0x3fc);
-    this->pass_through_io_accesses(0x3fd);
 }
 
 //------------------------------------------------------------------------------

@@ -67,7 +67,7 @@ private:
     void domain_op__add_e820_entry(gsl::not_null<vcpu *> vcpu);
     void domain_op__destroy_domain(gsl::not_null<vcpu *> vcpu);
 
-    bool dispatch(gsl::not_null<vcpu_t *> vcpu);
+    bool dispatch(gsl::not_null<vcpu *> vcpu);
 
 private:
 

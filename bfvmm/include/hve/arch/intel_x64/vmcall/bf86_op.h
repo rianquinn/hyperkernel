@@ -65,7 +65,7 @@ private:
     void bf86_op__emulate_outb(gsl::not_null<vcpu *> vcpu);
     void bf86_op__emulate_hlt(gsl::not_null<vcpu *> vcpu);
 
-    bool dispatch(gsl::not_null<vcpu_t *> vcpu);
+    bool dispatch(gsl::not_null<vcpu *> vcpu);
 
 private:
 

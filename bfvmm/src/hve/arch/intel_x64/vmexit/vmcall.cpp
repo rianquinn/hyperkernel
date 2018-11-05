@@ -60,7 +60,7 @@ vmcall_handler::handle(gsl::not_null<vcpu_t *> vcpu)
 
     try {
         for (const auto &d : m_handlers) {
-            if (d(vcpu)) {
+            if (d(m_vcpu)) {
                 return true;
             }
         }

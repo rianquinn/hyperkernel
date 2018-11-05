@@ -132,7 +132,7 @@ vmcall_domain_op_handler::domain_op__destroy_domain(
 
 bool
 vmcall_domain_op_handler::dispatch(
-    gsl::not_null<vcpu_t *> vcpu)
+    gsl::not_null<vcpu *> vcpu)
 {
     if (vcpu->rax() != __enum_domain_op) {
         return false;
@@ -140,19 +140,19 @@ vmcall_domain_op_handler::dispatch(
 
     switch(vcpu->rbx()) {
         case __enum_domain_op__create_domain:
-            this->domain_op__create_domain(m_vcpu);
+            this->domain_op__create_domain(vcpu);
             return true;
 
         case __enum_domain_op__map_gpa:
-            this->domain_op__map_gpa(m_vcpu);
+            this->domain_op__map_gpa(vcpu);
             return true;
 
         case __enum_domain_op__add_e820_entry:
-            this->domain_op__add_e820_entry(m_vcpu);
+            this->domain_op__add_e820_entry(vcpu);
             return true;
 
         case __enum_domain_op__destroy_domain:
-            this->domain_op__destroy_domain(m_vcpu);
+            this->domain_op__destroy_domain(vcpu);
             return true;
 
         default:
