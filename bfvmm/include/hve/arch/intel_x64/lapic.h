@@ -16,11 +16,12 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-#ifndef APIC_INTEL_X64_HYPERKERNEL_H
-#define APIC_INTEL_X64_HYPERKERNEL_H
+#ifndef LAPIC_INTEL_X64_HYPERKERNEL_H
+#define LAPIC_INTEL_X64_HYPERKERNEL_H
 
 #include "../../../../../include/gpa_layout.h"
 #include <bfvmm/memory_manager/memory_manager.h>
+#include <eapis/hve/arch/intel_x64/lapic.h>
 
 // -----------------------------------------------------------------------------
 // Exports
@@ -60,8 +61,7 @@ public:
     ///
     /// @cond
     ///
-    explicit lapic(
-        gsl::not_null<vcpu *> vcpu);
+    explicit lapic(gsl::not_null<vcpu *> vcpu);
 
     /// @endcond
 
@@ -101,7 +101,7 @@ public:
     /// @return APIC ID
     ///
     uint32_t id() const
-    { return 0x10; }
+    { return this->read(eapis::intel_x64::lapic::id::indx); }
 
     /// APIC Base
     ///
@@ -120,13 +120,35 @@ public:
     uint32_t base() const
     { return LAPIC_GPA; }
 
+    /// Read
+    ///
+    /// Read the value from a register
+    ///
+    /// @param idx the index of the register to read
+    //
+    /// @note the index is a dword offset, not a byte offset
+    ///
+    uint32_t read(uint32_t idx) const
+    { return m_lapic_view[idx]; }
+
+    /// Write
+    ///
+    /// Write the value to a register
+    ///
+    /// @param idx the index of the register to write
+    /// @param val the value to write
+    ///
+    /// @note the index is a dword offset, not a byte offset
+    ///
+    void write(uint32_t idx, uint32_t val)
+    { m_lapic_view[idx] = val; }
+
 private:
 
     vcpu *m_vcpu;
 
     page_ptr<uint32_t> m_lapic_page;
     gsl::span<uint32_t> m_lapic_view;
-
 };
 
 }

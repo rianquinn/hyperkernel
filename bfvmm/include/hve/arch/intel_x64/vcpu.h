@@ -258,6 +258,24 @@ public:
     ///
     VIRTUAL uint64_t lapic_base() const;
 
+    /// Set ICR Idle
+    ///
+    /// Clears the delivery status bit to idle, and
+    /// writes the result to the low ICR register
+    ///
+    /// @param val the value to write to the low ICR
+    ///
+    VIRTUAL void set_icr_idle(uint32_t val);
+
+    /// Set ICR Idle
+    ///
+    /// Clears the delivery status bit to idle, and
+    /// writes the result to the low ICR register
+    ///
+    /// @param val the value to write to the low ICR
+    ///
+    VIRTUAL uint32_t lapic_read(uint32_t idx);
+
     //--------------------------------------------------------------------------
     // Resources
     //--------------------------------------------------------------------------

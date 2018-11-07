@@ -32,8 +32,10 @@
 #include <eapis/hve/arch/intel_x64/vmexit/wrmsr.h>
 #include <eapis/hve/arch/intel_x64/vmexit/rdmsr.h>
 #include <eapis/hve/arch/intel_x64/vmexit/io_instruction.h>
+#include <eapis/hve/arch/intel_x64/vmexit/ept_violation.h>
 
 #include <eapis/hve/arch/x64/unmapper.h>
+
 
 // -----------------------------------------------------------------------------
 // Exports
@@ -176,11 +178,29 @@ private:
     void SCHEDOP_yield_handler(gsl::not_null<vcpu *> vcpu);
 
     // -------------------------------------------------------------------------
+    // xAPIC
+    // -------------------------------------------------------------------------
+
+    bool xapic_handle_read(
+        gsl::not_null<vcpu_t *> vcpu,
+        eapis::intel_x64::ept_violation_handler::info_t &info);
+
+    bool xapic_handle_write(
+        gsl::not_null<vcpu_t *> vcpu,
+        eapis::intel_x64::ept_violation_handler::info_t &info);
+
+    bool xapic_handle_write_icr(
+        eapis::intel_x64::ept_violation_handler::info_t &info);
+
+    uint64_t xapic_parse_write(const uint8_t *buf, size_t len);
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
     void reset_vcpu_time_info();
     void update_vcpu_time_info();
+    void init_disassembler();
 
     // -------------------------------------------------------------------------
     // Quirks
@@ -190,8 +210,12 @@ private:
 
 private:
 
-    uint64_t m_tsc_frequency;
+    uint64_t m_tsc_frequency{};
+    uint64_t m_callback_via{};
+    uint64_t m_icr{};
+
     std::unordered_map<uint32_t, uint64_t> m_msrs;
+    std::unordered_map<uint64_t, eapis::x64::unique_map<uint8_t>> m_xapic_rip_cache;
 
 private:
 

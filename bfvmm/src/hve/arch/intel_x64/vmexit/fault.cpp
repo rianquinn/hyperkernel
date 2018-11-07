@@ -36,11 +36,6 @@ fault_handler::fault_handler(
     );
 
     vcpu->add_handler(
-        exit_reason::basic_exit_reason::ept_violation,
-        ::handler_delegate_t::create<fault_handler, &fault_handler::handle>(this)
-    );
-
-    vcpu->add_handler(
         exit_reason::basic_exit_reason::ept_misconfiguration,
         ::handler_delegate_t::create<fault_handler, &fault_handler::handle>(this)
     );

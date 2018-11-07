@@ -18,6 +18,7 @@
 
 #include <intrinsics.h>
 
+#include <hve/arch/intel_x64/lapic.h>
 #include <hve/arch/intel_x64/vcpu.h>
 #include <hve/arch/intel_x64/fault.h>
 
@@ -299,6 +300,19 @@ vcpu::lapicid() const
 uint64_t
 vcpu::lapic_base() const
 { return m_lapic.base(); }
+
+void
+vcpu::set_icr_idle(uint32_t low)
+{
+    using namespace eapis::intel_x64::lapic::icr_low;
+
+    delivery_status::set(low, delivery_status::idle);
+    m_lapic.write(indx, low);
+}
+
+uint32_t
+vcpu::lapic_read(uint32_t idx)
+{ return m_lapic.read(idx); }
 
 //------------------------------------------------------------------------------
 // Resources
