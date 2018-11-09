@@ -80,11 +80,11 @@ constexpr auto xen_msr_debug_nhex       = 0xC0000700;
     m_vcpu->emulate_io_instruction(                                                                 \
         a, make_delegate(io_instruction_handler, b), make_delegate(io_instruction_handler, c))
 
-#define ADD_EPT_WRITE_HANDLER(b)                                                                    \
-    m_vcpu->add_ept_write_violation_handler(make_delegate(ept_violation_handler, b))
-
-#define ADD_EPT_READ_HANDLER(b)                                                                     \
-    m_vcpu->add_ept_read_violation_handler(make_delegate(ept_violation_handler, b))
+//#define ADD_EPT_WRITE_HANDLER(b)                                                                    \
+//    m_vcpu->add_ept_write_violation_handler(make_delegate(ept_violation_handler, b))
+//
+//#define ADD_EPT_READ_HANDLER(b)                                                                     \
+//    m_vcpu->add_ept_read_violation_handler(make_delegate(ept_violation_handler, b))
 
 #define ADD_VMX_PET_HANDLER(b)                                                                      \
     m_vcpu->add_vmx_preemption_timer_handler(make_delegate(vmx_preemption_timer_handler, b))
@@ -127,7 +127,7 @@ xen_op_handler::xen_op_handler(
     ADD_VMCALL_HANDLER(HYPERVISOR_xen_version);
     ADD_VMCALL_HANDLER(HYPERVISOR_hvm_op);
     ADD_VMCALL_HANDLER(HYPERVISOR_event_channel_op);
-    // ADD_VMCALL_HANDLER(HYPERVISOR_sched_op);
+    ADD_VMCALL_HANDLER(HYPERVISOR_sched_op);
 
     if (vcpu->is_domU()) {
         vcpu->trap_on_all_io_instruction_accesses();
@@ -204,9 +204,9 @@ xen_op_handler::xen_op_handler(
     this->setup_x2apic_rdmsr_emulation();
     this->setup_x2apic_wrmsr_emulation();
 
-    ADD_VMX_PET_HANDLER(handle_vmx_pet);
+    //ADD_VMX_PET_HANDLER(handle_vmx_pet);
 
-    // m_sched_op = std::make_unique<sched_op>(vcpu, tsc_frequency());
+    //m_sched_op = std::make_unique<sched_op>(vcpu, tsc_frequency());
 }
 
 /// TODO
@@ -396,6 +396,8 @@ xen_op_handler::emulate_wrmsr_tsc_deadline(
     eapis::intel_x64::wrmsr_handler::info_t &info)
 {
     bfignored(vcpu);
+
+    bfdebug_info(0, "Handling TSC Deadline");
 
     // Since we don't trap on read_tsc, we need to account for the duration between
     // when the guest first rdtsc'd to now, which is roughly the cost of
@@ -727,6 +729,8 @@ xen_op_handler::emulate_wrmsr_lvt_timer(
         return false;
     }
 
+    bfalert_info(0, "Setting LVT timer to deadline mode");
+
     bfn::call_once(m_tsc_once_flag, [&](){
         m_pet_divide = preemption_timer_decrement::get();
         m_pet_vector = timer::vector::get(info.val);
@@ -927,7 +931,7 @@ xen_op_handler::xen_cpuid_leaf2_handler(
 {
     bfignored(vcpu);
 
-    info.rax = 0x00040B00U; // 4.11
+    info.rax = 0x00040B00U; // 4.11.0
     info.rbx = 0U;
     info.rcx = 0U;
     info.rdx = 0U;
@@ -956,8 +960,8 @@ xen_op_handler::xen_cpuid_leaf5_handler(
     bfignored(vcpu);
 
     info.rax = 0U;
-    info.rax |= XEN_HVM_CPUID_APIC_ACCESS_VIRT;
-    // info.rax |= XEN_HVM_CPUID_X2APIC_VIRT;           // Need to support emulated VT-d first
+    // info.rax |= XEN_HVM_CPUID_APIC_ACCESS_VIRT;
+    info.rax |= XEN_HVM_CPUID_X2APIC_VIRT;           // Need to support emulated VT-d first
     // info.rax |= XEN_HVM_CPUID_IOMMU_MAPPINGS;        // Need to support emulated VT-d first
     info.rax |= XEN_HVM_CPUID_VCPU_ID_PRESENT;
     info.rax |= XEN_HVM_CPUID_DOMID_PRESENT;
@@ -1144,8 +1148,8 @@ xen_op_handler::XENVER_get_features_handler(
         info->submap |= (1 << XENFEAT_highmem_assist);
         info->submap |= (1 << XENFEAT_gnttab_map_avail_bits);
         info->submap |= (1 << XENFEAT_hvm_callback_vector);
-        // info->submap |= (1 << XENFEAT_hvm_safe_pvclock);
-        // info->submap |= (1 << XENFEAT_hvm_pirqs);
+        info->submap |= (1 << XENFEAT_hvm_safe_pvclock);
+        info->submap |= (1 << XENFEAT_hvm_pirqs);
         info->submap |= (1 << XENFEAT_dom0);
         info->submap |= (1 << XENFEAT_memory_op_vnode_supported);
         // info->submap |= (1 << XENFEAT_ARM_SMCCC_supported);
@@ -1186,8 +1190,9 @@ void
 xen_op_handler::SCHEDOP_yield_handler(gsl::not_null<vcpu *> vcpu)
 {
     try {
-        m_sched_op->handle_yield(vcpu);
+        //m_sched_op->handle_yield(vcpu);
         vcpu->set_rax(SUCCESS);
+        m_vcpu->return_and_continue();
     }
     catchall({
         vcpu->set_rax(FAILURE);
@@ -1374,7 +1379,7 @@ void
 xen_op_handler::reset_vcpu_time_info()
 {
     expects(m_shared_info);
-    m_tsc_frequency = tsc_frequency();
+    m_tsc_freq_khz = tsc_frequency();
 
     /// The equation for tsc_to_system_mul is the following:
     /// - tsc_to_system_mul = (10^9 << 32) / (CPU freq Hz)
@@ -1390,19 +1395,25 @@ xen_op_handler::reset_vcpu_time_info()
     constexpr const uint64_t GHz = 10e9;
     auto &info = m_shared_info->vcpu_info[0].time;
 
+    info.tsc_timestamp = 0;
+    info.system_time = 0;
+    info.tsc_to_system_mul = (GHz << 32U) / (m_tsc_freq_khz * 1000U);
     info.tsc_shift = 0;
-    info.tsc_to_system_mul = (GHz << 32) / (m_tsc_frequency * 1000);
     info.flags = XEN_PVCLOCK_TSC_STABLE_BIT;
+
+    bfalert_ndec(0, "timestamp", info.tsc_timestamp);
+    bfalert_ndec(0, "system_time", info.system_time);
+    bfalert_ndec(0, "tsc_mul", info.tsc_to_system_mul);
+    bfalert_ndec(0, "shift", info.tsc_shift);
 }
 
 void
 xen_op_handler::update_vcpu_time_info()
 {
-    if (!m_shared_info) {
+    if (GSL_UNLIKELY(!m_shared_info)) {
         return;
     }
 
-    constexpr const uint64_t us = 10e6;
     auto &info = m_shared_info->vcpu_info[0].time;
 
     // The xen.h comments suggest that we need to flip the version to prevent
@@ -1418,10 +1429,15 @@ xen_op_handler::update_vcpu_time_info()
     // granularity extends to the kHz level.
     //
 
-    info.version = 1;
-    info.tsc_timestamp = ::x64::read_tsc::get();
-    info.system_time = (info.tsc_timestamp * 1000) / (m_tsc_frequency / 1000);
-    info.version = 0;
+    //info.version = 1;
+    const uint64_t tsc_mul = info.tsc_to_system_mul;
+    const uint64_t tsc_pre = info.tsc_timestamp;
+    const uint64_t tsc_now = ::x64::read_tsc::get();
+
+    info.tsc_timestamp = tsc_now;
+    info.system_time += (((tsc_now - tsc_pre) * tsc_mul) >> 32U);
+
+    //info.version = 0;
 }
 
 shared_info_t *

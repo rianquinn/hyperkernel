@@ -229,7 +229,7 @@ private:
 
     uint64_t m_pet_divide{};
     uint64_t m_pet_vector{};
-    uint64_t m_tsc_frequency{};
+    uint64_t m_tsc_freq_khz{};
     uint64_t m_callback_via{};
 
     std::unordered_map<uint32_t, uint64_t> m_msrs;
