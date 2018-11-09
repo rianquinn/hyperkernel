@@ -247,7 +247,7 @@ public:
     ///
     /// @return APIC ID
     ///
-    VIRTUAL uint64_t lapicid() const;
+    VIRTUAL uint32_t lapicid() const;
 
     /// APIC Base
     ///
@@ -258,23 +258,19 @@ public:
     ///
     VIRTUAL uint64_t lapic_base() const;
 
-    /// Set ICR Idle
+    /// Read
     ///
-    /// Clears the delivery status bit to idle, and
-    /// writes the result to the low ICR register
+    /// @param indx the dword offset to read from
+    /// @return the 32-bit value of the register
     ///
-    /// @param val the value to write to the low ICR
-    ///
-    VIRTUAL void set_icr_idle(uint32_t val);
+    VIRTUAL uint32_t lapic_read(uint32_t indx) const;
 
-    /// Set ICR Idle
+    /// Write
     ///
-    /// Clears the delivery status bit to idle, and
-    /// writes the result to the low ICR register
+    /// @param indx the dword offset to write to
+    /// @param val the 32-bit value to write
     ///
-    /// @param val the value to write to the low ICR
-    ///
-    VIRTUAL uint32_t lapic_read(uint32_t idx);
+    VIRTUAL void lapic_write(uint32_t indx, uint32_t val);
 
     //--------------------------------------------------------------------------
     // Resources

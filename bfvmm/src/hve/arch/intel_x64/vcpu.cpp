@@ -293,7 +293,7 @@ vcpu::is_killed() const
 // LAPIC
 //------------------------------------------------------------------------------
 
-uint64_t
+uint32_t
 vcpu::lapicid() const
 { return m_lapic.id(); }
 
@@ -301,18 +301,13 @@ uint64_t
 vcpu::lapic_base() const
 { return m_lapic.base(); }
 
-void
-vcpu::set_icr_idle(uint32_t low)
-{
-    using namespace eapis::intel_x64::lapic::icr_low;
-
-    delivery_status::set(low, delivery_status::idle);
-    m_lapic.write(indx, low);
-}
-
 uint32_t
-vcpu::lapic_read(uint32_t idx)
-{ return m_lapic.read(idx); }
+vcpu::lapic_read(uint32_t indx) const
+{ return m_lapic.read(indx); }
+
+void
+vcpu::lapic_write(uint32_t indx, uint32_t val)
+{ m_lapic.write(indx, val); }
 
 //------------------------------------------------------------------------------
 // Resources
