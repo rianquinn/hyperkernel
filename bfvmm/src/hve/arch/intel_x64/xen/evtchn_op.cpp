@@ -39,7 +39,7 @@ evtchn_op::evtchn_op(
     gsl::not_null<xen_op_handler *> handler)
 :
     m_vcpu{vcpu},
-    m_xen_handler{handler}
+    m_xen_op{handler}
 {
     m_event_word.reserve(event_word_capacity);
     m_event_group.reserve(event_group_capacity);
@@ -66,11 +66,7 @@ void
 evtchn_op::init_control(
     gsl::not_null<evtchn_init_control_t *> ctl)
 {
-    // TODO: We probably should bring down the whole system due to invalid
-    // guest arguments. Xen returns error codes like -EINVAL in rax
-
-    // expects(ctl->vcpu == m_vcpu->id()); the guest passes 0x10
-
+    expects(ctl->vcpu == m_vcpu->lapicid());
     expects(ctl->offset <= (0x1000 - sizeof(evtchn_fifo_control_block_t)));
     expects(bfn::lower(ctl->offset, 3) == 0);
 
@@ -168,11 +164,10 @@ evtchn_op::setup_ports()
 {
     for (auto p = 1; p < chan_capacity; p++) {
         if (!this->port_is_valid(p)) {
-            //bfdebug_ndec(0, "setup_ports: invalid port: ", p)
-            return;
+            break;
         }
 
-        auto arr = m_xen_handler->shared_info()->evtchn_pending;
+        auto arr = m_xen_op->shared_info()->evtchn_pending;
         auto idx = p / bits_per_xen_ulong;
         auto bit = p % bits_per_xen_ulong;
         auto val = arr[idx];
@@ -180,9 +175,26 @@ evtchn_op::setup_ports()
         if (is_bit_set(bit, val)) {
             auto chan = this->port_to_chan(p);
             chan->set_pending();
-            //bfalert_nhex(0, "pending event at port:", p);
         }
     }
+
+    auto &info = m_xen_op->shared_info()->vcpu_info[0];
+
+    info.evtchn_upcall_pending = 1;
+    info.evtchn_pending_sel = 0xFFFFFFFFFFFFFFFFULL;
+}
+
+void
+evtchn_op::set_callback_via(uint64_t via)
+{
+    expects(m_xen_op->shared_info());
+
+    // At this point, the guest has initialized the evtchn
+    // control structures and has given us the vector to inject
+    // whenever an upcall is pending.
+    //
+    m_cb_via = via;
+    m_vcpu->queue_external_interrupt(via);
 }
 
 void

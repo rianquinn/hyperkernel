@@ -80,9 +80,9 @@ constexpr auto xen_msr_debug_nhex       = 0xC0000700;
     m_vcpu->emulate_io_instruction(                                                                 \
         a, make_delegate(io_instruction_handler, b), make_delegate(io_instruction_handler, c))
 
-//#define ADD_EPT_WRITE_HANDLER(b)                                                                    \
-//    m_vcpu->add_ept_write_violation_handler(make_delegate(ept_violation_handler, b))
-//
+#define ADD_EPT_WRITE_HANDLER(b)                                                                    \
+    m_vcpu->add_ept_write_violation_handler(make_delegate(ept_violation_handler, b))
+
 //#define ADD_EPT_READ_HANDLER(b)                                                                     \
 //    m_vcpu->add_ept_read_violation_handler(make_delegate(ept_violation_handler, b))
 
@@ -206,12 +206,7 @@ xen_op_handler::xen_op_handler(
     vcpu->pass_through_io_accesses(0x3fc);
     vcpu->pass_through_io_accesses(0x3fd);
 
-    this->setup_x2apic_rdmsr_emulation();
-    this->setup_x2apic_wrmsr_emulation();
 
-    //ADD_VMX_PET_HANDLER(handle_vmx_pet);
-
-    //m_sched_op = std::make_unique<sched_op>(vcpu, tsc_frequency());
 }
 
 /// TODO
@@ -865,6 +860,7 @@ xen_op_handler::cpuid_leaf7_handler(
     //
     // EBX:
     // - SGX                no plans to support
+    // - TSC_ADJUST         need to properly emulate TSC offsetting
     // - AVX2               need to properly emulate XSAVE/XRESTORE
     // - INVPCID            need to properly emulate PCID
     // - RTM                no plans to support
@@ -889,6 +885,7 @@ xen_op_handler::cpuid_leaf7_handler(
     // - PKU                ??? Might be able to support, not sure
     // - OSPKE              ??? Might be able to support, not sure
     // - MAWAU              no plans to support
+    // - TSC_AUX            need to properly emulate TSC offsetting
     // - SGX_LC             no plans to support
 
     if (info.rcx != 0) {
@@ -899,8 +896,8 @@ xen_op_handler::cpuid_leaf7_handler(
     }
 
     info.rax = 1U;
-    info.rbx &= 0x19C23DBU;
-    info.rcx &= 0x0400000U;
+    info.rbx &= 0x19C23D9U;
+    info.rcx &= 0U;
     info.rdx = 0U;
 
     return true;
@@ -916,10 +913,11 @@ xen_op_handler::cpuid_leaf80000001_handler(
     //
     // EDX:
     // - 1-GByte Pages      no plans to support
+    // - TSC_AUX            need to properly emulate TSC offsetting
 
     info.rbx = 0U;
     info.rcx &= 0x121U;
-    info.rdx &= 0x18100800U;
+    info.rdx &= 0x10100800U;
 
     return true;
 }
@@ -973,7 +971,7 @@ xen_op_handler::xen_cpuid_leaf5_handler(
     bfignored(vcpu);
 
     info.rax = 0U;
-    // info.rax |= XEN_HVM_CPUID_APIC_ACCESS_VIRT;
+    info.rax |= XEN_HVM_CPUID_APIC_ACCESS_VIRT;
     info.rax |= XEN_HVM_CPUID_X2APIC_VIRT;           // Need to support emulated VT-d first
     // info.rax |= XEN_HVM_CPUID_IOMMU_MAPPINGS;        // Need to support emulated VT-d first
     info.rax |= XEN_HVM_CPUID_VCPU_ID_PRESENT;
@@ -1312,19 +1310,25 @@ verify_callback_via(uint64_t via)
             "unsupported callback via type: " + std::to_string(via)
         );
     }
+
+    const auto vector = via & 0xFFU;
+    if (vector < 0x20 || vector > 0xFF) {
+        throw std::invalid_argument(
+            "invalid callback vector: " + std::to_string(vector)
+        );
+    }
 }
 
 void
 xen_op_handler::HVMOP_set_param_handler(gsl::not_null<vcpu *> vcpu)
 {
     try {
-        auto arg =
-            vcpu->map_arg<xen_hvm_param_t>(vcpu->rsi());
+        auto arg = vcpu->map_arg<xen_hvm_param_t>(vcpu->rsi());
 
         switch (arg->index) {
             case HVM_PARAM_CALLBACK_IRQ:
                 verify_callback_via(arg->value);
-                m_callback_via = arg->value & 0xFF;
+                m_evtchn_op->set_callback_via(arg->value & 0xFFU);
                 vcpu->set_rax(SUCCESS);
                 break;
 

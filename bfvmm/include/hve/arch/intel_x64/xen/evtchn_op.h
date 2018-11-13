@@ -105,6 +105,12 @@ public:
     ///
     void send(gsl::not_null<evtchn_send_t *> send);
 
+    /// Set callback via
+    ///
+    /// Set the vector used to inject events into the guest
+    ///
+    void set_callback_via(uint64_t via);
+
 private:
 
     // Static members
@@ -166,7 +172,8 @@ private:
     std::vector<page_ptr<chan_t>> m_event_group{};
 
     vcpu *m_vcpu;
-    xen_op_handler *m_xen_handler;
+    xen_op_handler *m_xen_op;
+    uint64_t m_cb_via;
 
 public:
 
