@@ -156,21 +156,32 @@ xen_op_handler::xen_op_handler(
     EMULATE_RDMSR(0xFE, rdmsr_zero_handler);                        // MTRRs not supported
     EMULATE_RDMSR(0x2FF, rdmsr_zero_handler);                       // MTRRs not supported
 
+    vcpu->pass_through_msr_access(0x140);                           // Pass-through user mode montior/mwait
+
+    // We effectively pass this through to the guest already
+    // through the eapis::intel_x64::timer::tsc_freq_MHz
+    vcpu->pass_through_msr_access(::intel_x64::msrs::platform_info::addr);
+
     EMULATE_RDMSR(::intel_x64::msrs::ia32_apic_base::addr,
-                  ia32_apic_base_rdmsr_handler);                    // TODO: use namespace name
+                  ia32_apic_base_rdmsr_handler);
 
     EMULATE_WRMSR(::intel_x64::msrs::ia32_apic_base::addr,
-                  ia32_apic_base_wrmsr_handler);                    // TODO: use namespace name
+                  ia32_apic_base_wrmsr_handler);
 
     EMULATE_RDMSR(0x1A0, ia32_misc_enable_rdmsr_handler);           // TODO: use namespace name
     EMULATE_WRMSR(0x1A0, ia32_misc_enable_wrmsr_handler);           // TODO: use namespace name
 
-    ADD_CPUID_HANDLER(0, cpuid_pass_through_handler);
+    ADD_CPUID_HANDLER(0x0, cpuid_pass_through_handler);
+    ADD_CPUID_HANDLER(0x2, cpuid_pass_through_handler);             // Passthrough cache info
+    ADD_CPUID_HANDLER(0x4, cpuid_leaf4_handler);
     ADD_CPUID_HANDLER(0x6, cpuid_leaf6_handler);
     ADD_CPUID_HANDLER(0x7, cpuid_leaf7_handler);
+
+    EMULATE_CPUID(0xA, cpuid_zero_handler);
     EMULATE_CPUID(0xD, cpuid_zero_handler);
     EMULATE_CPUID(0xF, cpuid_zero_handler);
     EMULATE_CPUID(0x10, cpuid_zero_handler);
+
     ADD_CPUID_HANDLER(0x15, cpuid_pass_through_handler);            // TODO: 0 reserved bits
     ADD_CPUID_HANDLER(0x16, cpuid_pass_through_handler);            // TODO: 0 reserved bits
     ADD_CPUID_HANDLER(0x80000000, cpuid_pass_through_handler);      // TODO: 0 reserved bits
@@ -718,6 +729,18 @@ xen_op_handler::cpuid_pass_through_handler(
     return true;
 }
 
+bool
+xen_op_handler::cpuid_leaf4_handler(
+    gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info)
+{
+    using namespace ::intel_x64::cpuid::cache_parameters::eax;
+    bfignored(vcpu);
+
+    info.rax &= ~max_ids_logical::mask;
+    info.rax &= ~max_ids_physical::mask;
+
+    return true;
+}
 bool
 xen_op_handler::cpuid_leaf6_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info)
