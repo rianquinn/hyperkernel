@@ -183,32 +183,15 @@ private:
     // Local APIC
     // -------------------------------------------------------------------------
 
-    void setup_x2apic_rdmsr_emulation();
-    void setup_x2apic_wrmsr_emulation();
+    //bool xapic_handle_read(
+    //    gsl::not_null<vcpu_t *> vcpu,
+    //    eapis::intel_x64::ept_violation_handler::info_t &info);
 
-    bool emulate_rdmsr_x2apic(
+    bool xapic_handle_write(
         gsl::not_null<vcpu_t *> vcpu,
-        eapis::intel_x64::rdmsr_handler::info_t &info);
+        eapis::intel_x64::ept_violation_handler::info_t &info);
 
-    bool emulate_wrmsr_x2apic(
-        gsl::not_null<vcpu_t *> vcpu,
-        eapis::intel_x64::wrmsr_handler::info_t &info);
-
-    bool emulate_wrmsr_icr(
-        eapis::intel_x64::wrmsr_handler::info_t &info);
-
-    bool emulate_wrmsr_lvt_timer(
-        eapis::intel_x64::wrmsr_handler::info_t &info);
-
-    // -------------------------------------------------------------------------
-    // Timers
-    // -------------------------------------------------------------------------
-
-    bool emulate_wrmsr_tsc_deadline(
-        gsl::not_null<vcpu_t *> vcpu,
-        eapis::intel_x64::wrmsr_handler::info_t &info);
-
-    bool handle_vmx_pet(gsl::not_null<vcpu_t *> vcpu);
+    void xapic_handle_write_icr(uint64_t icr_low);
 
     // -------------------------------------------------------------------------
     // Helpers
@@ -231,9 +214,9 @@ private:
     uint64_t m_pet_divide{};
     uint64_t m_pet_vector{};
     uint64_t m_tsc_freq_khz{};
-    uint64_t m_callback_via{};
 
     std::unordered_map<uint32_t, uint64_t> m_msrs;
+    std::unordered_map<uint64_t, eapis::x64::unique_map<uint8_t>> m_xapic_rip_cache;
 
 private:
 

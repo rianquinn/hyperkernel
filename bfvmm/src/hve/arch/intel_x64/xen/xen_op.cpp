@@ -85,9 +85,9 @@ constexpr auto xen_msr_debug_nhex       = 0xC0000700;
 
 //#define ADD_EPT_READ_HANDLER(b)                                                                     \
 //    m_vcpu->add_ept_read_violation_handler(make_delegate(ept_violation_handler, b))
-
-#define ADD_VMX_PET_HANDLER(b)                                                                      \
-    m_vcpu->add_vmx_preemption_timer_handler(make_delegate(vmx_preemption_timer_handler, b))
+//
+//#define ADD_VMX_PET_HANDLER(b)                                                                      \
+//    m_vcpu->add_vmx_preemption_timer_handler(make_delegate(vmx_preemption_timer_handler, b))
 
 // =============================================================================
 // Implementation
@@ -127,7 +127,7 @@ xen_op_handler::xen_op_handler(
     ADD_VMCALL_HANDLER(HYPERVISOR_xen_version);
     ADD_VMCALL_HANDLER(HYPERVISOR_hvm_op);
     ADD_VMCALL_HANDLER(HYPERVISOR_event_channel_op);
-    ADD_VMCALL_HANDLER(HYPERVISOR_sched_op);
+    // ADD_VMCALL_HANDLER(HYPERVISOR_sched_op);
 
     if (vcpu->is_domU()) {
         vcpu->trap_on_all_io_instruction_accesses();
@@ -175,6 +175,11 @@ xen_op_handler::xen_op_handler(
     ADD_CPUID_HANDLER(0x16, cpuid_pass_through_handler);            // TODO: 0 reserved bits
     ADD_CPUID_HANDLER(0x80000000, cpuid_pass_through_handler);      // TODO: 0 reserved bits
     ADD_CPUID_HANDLER(0x80000001, cpuid_leaf80000001_handler);      // TODO: 0 reserved bits
+
+    ADD_CPUID_HANDLER(0x80000002, cpuid_pass_through_handler);      // processor brand string continued TODO: 0 reserved bits
+    ADD_CPUID_HANDLER(0x80000003, cpuid_pass_through_handler);      // processor brand string continued TODO: 0 reserved bits
+    ADD_CPUID_HANDLER(0x80000004, cpuid_pass_through_handler);      // processor brand string continued TODO: 0 reserved bits
+
     ADD_CPUID_HANDLER(0x80000007, cpuid_pass_through_handler);      // TODO: 0 reserved bits
     ADD_CPUID_HANDLER(0x80000008, cpuid_pass_through_handler);      // TODO: 0 reserved bits
 
@@ -206,127 +211,7 @@ xen_op_handler::xen_op_handler(
     vcpu->pass_through_io_accesses(0x3fc);
     vcpu->pass_through_io_accesses(0x3fd);
 
-
-}
-
-/// TODO
-///
-/// The commented registers are not readable, so we really
-/// should inject a #GP
-///
-void
-xen_op_handler::setup_x2apic_rdmsr_emulation()
-{
-    using namespace ::intel_x64::msrs;
-
-    EMULATE_RDMSR(ia32_x2apic_apicid::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_version::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_tpr::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_ppr::addr, emulate_rdmsr_x2apic);
-//    EMULATE_RDMSR(ia32_x2apic_eoi::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_ldr::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_svr::addr, emulate_rdmsr_x2apic);
-
-    EMULATE_RDMSR(ia32_x2apic_isr0::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_isr1::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_isr2::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_isr3::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_isr4::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_isr5::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_isr6::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_isr7::addr, emulate_rdmsr_x2apic);
-
-    EMULATE_RDMSR(ia32_x2apic_tmr0::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_tmr1::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_tmr2::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_tmr3::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_tmr4::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_tmr5::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_tmr6::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_tmr7::addr, emulate_rdmsr_x2apic);
-
-    EMULATE_RDMSR(ia32_x2apic_irr0::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_irr1::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_irr2::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_irr3::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_irr4::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_irr5::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_irr6::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_irr7::addr, emulate_rdmsr_x2apic);
-
-    EMULATE_RDMSR(ia32_x2apic_esr::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_lvt_cmci::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_icr::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_lvt_timer::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_lvt_thermal::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_lvt_pmi::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_lvt_lint0::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_lvt_lint1::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_lvt_error::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_init_count::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_cur_count::addr, emulate_rdmsr_x2apic);
-    EMULATE_RDMSR(ia32_x2apic_dcr::addr, emulate_rdmsr_x2apic);
-//    EMULATE_RDMSR(ia32_x2apic_self_ipi::addr, emulate_rdmsr_x2apic);
-}
-
-/// TODO
-///
-/// The commented registers are not writeable, so we really
-/// should inject a #GP
-///
-void
-xen_op_handler::setup_x2apic_wrmsr_emulation()
-{
-    using namespace ::intel_x64::msrs;
-
-//    EMULATE_WRMSR(ia32_x2apic_apicid::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_version::addr, emulate_wrmsr_x2apic);
-    EMULATE_WRMSR(ia32_x2apic_tpr::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_ppr::addr, emulate_wrmsr_x2apic);
-    EMULATE_WRMSR(ia32_x2apic_eoi::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_ldr::addr, emulate_wrmsr_x2apic);
-    EMULATE_WRMSR(ia32_x2apic_svr::addr, emulate_wrmsr_x2apic);
-
-//    EMULATE_WRMSR(ia32_x2apic_isr0::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_isr1::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_isr2::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_isr3::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_isr4::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_isr5::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_isr6::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_isr7::addr, emulate_wrmsr_x2apic);
-//
-//    EMULATE_WRMSR(ia32_x2apic_tmr0::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_tmr1::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_tmr2::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_tmr3::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_tmr4::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_tmr5::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_tmr6::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_tmr7::addr, emulate_wrmsr_x2apic);
-//
-//    EMULATE_WRMSR(ia32_x2apic_irr0::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_irr1::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_irr2::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_irr3::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_irr4::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_irr5::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_irr6::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_irr7::addr, emulate_wrmsr_x2apic);
-
-    EMULATE_WRMSR(ia32_x2apic_esr::addr, emulate_wrmsr_x2apic);
-    EMULATE_WRMSR(ia32_x2apic_lvt_cmci::addr, emulate_wrmsr_x2apic);
-    EMULATE_WRMSR(ia32_x2apic_icr::addr, emulate_wrmsr_x2apic);
-    EMULATE_WRMSR(ia32_x2apic_lvt_timer::addr, emulate_wrmsr_x2apic);
-    EMULATE_WRMSR(ia32_x2apic_lvt_thermal::addr, emulate_wrmsr_x2apic);
-    EMULATE_WRMSR(ia32_x2apic_lvt_pmi::addr, emulate_wrmsr_x2apic);
-    EMULATE_WRMSR(ia32_x2apic_lvt_lint0::addr, emulate_wrmsr_x2apic);
-    EMULATE_WRMSR(ia32_x2apic_lvt_lint1::addr, emulate_wrmsr_x2apic);
-    EMULATE_WRMSR(ia32_x2apic_lvt_error::addr, emulate_wrmsr_x2apic);
-    EMULATE_WRMSR(ia32_x2apic_init_count::addr, emulate_wrmsr_x2apic);
-//    EMULATE_WRMSR(ia32_x2apic_cur_count::addr, emulate_wrmsr_x2apic);
-    EMULATE_WRMSR(ia32_x2apic_dcr::addr, emulate_wrmsr_x2apic);
-    EMULATE_WRMSR(ia32_x2apic_self_ipi::addr, emulate_wrmsr_x2apic);
+    ADD_EPT_WRITE_HANDLER(xapic_handle_write);
 }
 
 static uint64_t
@@ -373,70 +258,17 @@ tsc_frequency(void)
     if (denominator == 0 || numerator == 0) {
         auto bus = eapis::intel_x64::time::bus_freq_MHz();
         auto tsc = eapis::intel_x64::time::tsc_freq_MHz(bus);
-
-        return tsc * 1000U;
-        //throw std::runtime_error("unsupported system: missing TSC ratio");
+        return tsc * 1000;
     }
-
-    //bfdebug_ndec(0, "TSC ratio", numerator / denominator);
-    //bfdebug_ndec(0, "TSC (kHz)", 24000 * numerator / denominator);
 
     if (freq == 0) {
         auto bus = eapis::intel_x64::time::bus_freq_MHz();
         auto tsc = eapis::intel_x64::time::tsc_freq_MHz(bus);
-
-        return tsc * 1000U;
-    }
-    else {
-        freq /= 1000U;
+        return tsc * 1000;
     }
 
+    freq /= 1000;
     return freq * numerator / denominator;
-}
-
-bool
-xen_op_handler::emulate_wrmsr_tsc_deadline(
-    gsl::not_null<vcpu_t *> vcpu,
-    eapis::intel_x64::wrmsr_handler::info_t &info)
-{
-    bfignored(vcpu);
-
-    bfdebug_info(0, "Handling TSC Deadline");
-
-    // Since we don't trap on read_tsc, we need to account for the duration between
-    // when the guest first rdtsc'd to now, which is roughly the cost of
-    // an exit (mod interrupts).
-    //
-    // We could calibrate this "exit cost" at startup to be more accurate
-    //
-    const auto prev = ::x64::read_tsc::get() - 1024U;
-    const auto next = info.val;
-
-    const auto tsc = next - prev;
-    const auto pet = tsc >> m_pet_divide;
-
-    if (pet < 16U) {
-        bfalert_nhex(0, "small PET slice:", pet);
-        bfalert_subnhex(0, "tsc", tsc);
-        bfalert_subnhex(0, "next", next);
-        bfalert_subnhex(0, "prev", prev);
-    }
-
-    m_vcpu->set_vmx_preemption_timer(pet);
-    m_vcpu->enable_vmx_preemption_timer();
-
-    return true;
-}
-
-bool
-xen_op_handler::handle_vmx_pet(gsl::not_null<vcpu_t *> vcpu)
-{
-    bfignored(vcpu);
-
-    m_vcpu->queue_external_interrupt(m_pet_vector);
-    m_vcpu->disable_vmx_preemption_timer();
-
-    return true;
 }
 
 void
@@ -506,6 +338,181 @@ xen_op_handler::exit_handler(
 
     // Ignored
     return false;
+}
+
+// -----------------------------------------------------------------------------
+// xAPIC
+// -----------------------------------------------------------------------------
+
+//bool
+//xen_op_handler::xapic_handle_read(
+//    gsl::not_null<vcpu_t *> vcpu,
+//    eapis::intel_x64::ept_violation_handler::info_t &info)
+//{
+////    auto hkv = vcpu_cast(vcpu);
+////    if (bfn::upper(info.gpa) != hkv->lapic_base()) {
+////        return false;
+////    }
+////
+////    auto idx = bfn::lower(info.gpa) >> 2;
+////    bfdebug_nhex(0, "xapic read", idx << 2);
+////    bfdebug_subnhex(0, "val", m_vcpu->lapic_read(idx));
+////
+////    const auto len = ::intel_x64::vmcs::vm_exit_instruction_length::get();
+////    const auto rip = ::intel_x64::vmcs::guest_rip::get();
+////
+////    auto itr = m_xapic_rip_cache.find(rip);
+////    if (itr == m_xapic_rip_cache.end()) {
+////        auto ump = hkv->map_gva_4k<uint8_t>(rip, len);
+////        if (!ump) {
+////            throw std::runtime_error("handle_xapic_write::map_gva_4k failed");
+////        }
+////
+////        m_xapic_rip_cache[rip] = std::move(ump);
+////        itr = m_xapic_rip_cache.find(rip);
+////    }
+////
+////    const auto buf = itr->second.get();
+////    printf("received xapic insn: ");
+////    for (auto i = 0; i < len; i++) {
+////        printf("%02x", buf[i]);
+////    }
+////    printf("\n");
+//
+//    return false;
+//}
+
+uint64_t
+src_op_value(gsl::not_null<vcpu_t *> vcpu, int64_t src_op)
+{
+    switch (src_op) {
+        case hyperkernel::intel_x64::insn_decoder::eax:
+            return vcpu->rax() & 0xFFFFFFFFU;
+        case hyperkernel::intel_x64::insn_decoder::ecx:
+            return vcpu->rcx() & 0xFFFFFFFFU;
+        case hyperkernel::intel_x64::insn_decoder::edx:
+            return vcpu->rdx() & 0xFFFFFFFFU;
+        case hyperkernel::intel_x64::insn_decoder::ebx:
+            return vcpu->rbx() & 0xFFFFFFFFU;
+        case hyperkernel::intel_x64::insn_decoder::esp:
+            return vcpu->rsp() & 0xFFFFFFFFU;
+        case hyperkernel::intel_x64::insn_decoder::ebp:
+            return vcpu->rbp() & 0xFFFFFFFFU;
+        case hyperkernel::intel_x64::insn_decoder::esi:
+            return vcpu->rsi() & 0xFFFFFFFFU;
+        case hyperkernel::intel_x64::insn_decoder::edi:
+            return vcpu->rdi() & 0xFFFFFFFFU;
+    }
+
+    throw std::invalid_argument("invalid reg");
+}
+
+static void print_insn(const unsigned char *buf, size_t len)
+{
+    for (auto i = 0; i < len; i++) {
+        printf("%02x", buf[i]);
+    }
+}
+
+void
+xen_op_handler::xapic_handle_write_icr(uint64_t low)
+{
+    using namespace eapis::intel_x64::lapic;
+
+    const auto dlm = icr_low::delivery_mode::get(low);
+    switch (dlm) {
+        case icr_low::delivery_mode::fixed:
+            break;
+
+        default:
+            bfalert_nhex(0, "unsupported delivery mode:", dlm);
+            return;
+    }
+
+    auto dsh = icr_low::dest_shorthand::get(low);
+    switch (dsh) {
+        case icr_low::dest_shorthand::self:
+            m_vcpu->queue_external_interrupt(icr_low::vector::get(low));
+            m_vcpu->lapic_write(icr_low::indx, low);
+            break;
+
+        default:
+            bfalert_nhex(0, "unsupported dest shorthand: ", dsh);
+            break;
+    }
+}
+
+bool
+xen_op_handler::xapic_handle_write(
+    gsl::not_null<vcpu_t *> vcpu,
+    eapis::intel_x64::ept_violation_handler::info_t &info)
+{
+    using namespace eapis::intel_x64::lapic;
+
+    auto hkv = vcpu_cast(vcpu);
+    if (bfn::upper(info.gpa) != hkv->lapic_base()) {
+        return false;
+    }
+
+
+    const auto idx = bfn::lower(info.gpa) >> 2;
+    if (idx == eoi::indx) {
+        info.ignore_advance = false;
+        return true;
+    }
+
+    const auto len = ::intel_x64::vmcs::vm_exit_instruction_length::get();
+    const auto rip = ::intel_x64::vmcs::guest_rip::get();
+
+    auto itr = m_xapic_rip_cache.find(rip);
+    if (itr == m_xapic_rip_cache.end()) {
+        auto ump = hkv->map_gva_4k<uint8_t>(rip, len);
+        if (!ump) {
+            throw std::runtime_error("handle_xapic_write::map_gva_4k failed");
+        }
+
+        m_xapic_rip_cache[rip] = std::move(ump);
+        itr = m_xapic_rip_cache.find(rip);
+    }
+
+    const auto buf = itr->second.get();
+
+    printf("xapic_write: ");
+    print_insn(buf, len);
+
+    hyperkernel::intel_x64::insn_decoder dec(buf, len);
+    const auto val = src_op_value(vcpu, dec.src_op());
+    printf(" value: 0x%08lx\n", val);
+
+    switch (idx) {
+        case icr_low::indx:
+            this->xapic_handle_write_icr(val);
+            break;
+
+        case icr_high::indx:
+        case id::indx:
+            m_vcpu->lapic_write(idx, val);
+            break;
+
+        case tpr::indx:
+        case ldr::indx:
+        case dfr::indx:
+        case svr::indx:
+        case lvt::lint0::indx:
+        case lvt::lint1::indx:
+        case lvt::error::indx:
+        case esr::indx:
+            bfalert_nhex(0, "received xAPIC write @ offset:", idx << 2);
+            m_vcpu->lapic_write(idx, val);
+            break;
+
+        default:
+            bfalert_nhex(0, "unhandled xapic write indx:", idx);
+            return false;
+    }
+
+    info.ignore_advance = false;
+    return true;
 }
 
 // -----------------------------------------------------------------------------
@@ -605,7 +612,7 @@ xen_op_handler::ia32_apic_base_rdmsr_handler(
 //    ::intel_x64::msrs::ia32_apic_base::state::enable_x2apic(val);
     info.val = val;
 
-    bfalert_nhex(0, "reading APIC BASE:", info.val);
+    bfalert_nhex(0, "Reading APIC BASE:", info.val);
 
     return true;
 }
@@ -614,143 +621,22 @@ bool
 xen_op_handler::ia32_apic_base_wrmsr_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::wrmsr_handler::info_t &info)
 {
-    bfignored(vcpu);
-    bfignored(info);
+    using namespace ::intel_x64::msrs::ia32_apic_base;
 
-    bfalert_info(0, "Handling IA32_APIC_BASE write...");
-    ::intel_x64::msrs::ia32_apic_base::dump(0, info.val);
+    bfignored(vcpu);
+
+    bfalert_info(0, "Writing APIC BASE:");
+
+    switch (state::get(info.val)) {
+        case state::xapic:
+            break;
+        default:
+            bfalert_info(0, "Unhandled LAPIC state change");
+            dump(info.val);
+            return false;
+    }
+
     m_apic_base = info.val;
-
-    return false;
-}
-
-// We get the *dword* indx into the virtual lapic
-//
-// See lapic.h in eapis for details
-//
-static uint64_t indx_to_msr(uint32_t indx)
-{
-    constexpr const auto x2apic_base = 0x800U;
-    return x2apic_base | (indx >> 2U);
-}
-
-static uint64_t msr_to_indx(uint32_t msr)
-{ return (msr & 0xFFU) << 2U; }
-
-bool
-xen_op_handler::emulate_rdmsr_x2apic(
-    gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::rdmsr_handler::info_t &info)
-{
-    bfignored(vcpu);
-
-    info.val = m_vcpu->lapic_read(msr_to_indx(info.msr));
-    return true;
-}
-
-bool
-xen_op_handler::emulate_wrmsr_x2apic(
-    gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::wrmsr_handler::info_t &info)
-{
-    bfignored(vcpu);
-
-    using namespace eapis::intel_x64::lapic;
-
-    const auto indx = msr_to_indx(info.msr);
-    switch (indx) {
-
-    // We greedily assume the guest wrote a 0
-    // (the only value allowed) and return immediately
-    //
-    case eoi::indx:
-        return true;
-
-    case lvt::timer::indx:
-        return this->emulate_wrmsr_lvt_timer(info);
-
-    case icr_low::indx:
-        return this->emulate_wrmsr_icr(info);
-
-    case icr_high::indx:
-        m_vcpu->lapic_write(indx, info.val);
-        return true;
-
-    case self_ipi::indx:
-        m_vcpu->queue_external_interrupt(info.val & 0xFFU);
-        return true;
-
-    default:
-        bfalert_info(0, "Unexpected x2apic write");
-        bfalert_subnhex(0, "msr", info.msr);
-        bfalert_subnhex(0, "val", info.val);
-        bfalert_subnhex(0, "dword indx", indx);
-        bfalert_subnhex(0, "byte indx", indx << 2);
-        return false;
-    }
-}
-
-bool
-xen_op_handler::emulate_wrmsr_icr(
-    eapis::intel_x64::wrmsr_handler::info_t &info)
-{
-    using namespace eapis::intel_x64::lapic;
-
-    const auto low = info.val;
-
-    switch (icr_low::delivery_mode::get(low)) {
-    case icr_low::delivery_mode::fixed:
-        break;
-
-    default:
-        bfalert_info(0, "Unexpected IPI delivery mode");
-        icr_high::dump(0, m_vcpu->lapic_read(icr_high::indx));
-        icr_low::dump(0, low);
-        return false;
-    }
-
-    // Right now we only have one vcpu, so we skip the destination
-    // calculations; a sane and well-behaved guest would never
-    // take this path, they would use the self_ipi register explicitly
-    //
-    icr_high::dump(0, m_vcpu->lapic_read(icr_high::indx));
-    icr_low::dump(0, low);
-
-    m_vcpu->lapic_write(icr_low::indx, low);
-    m_vcpu->queue_external_interrupt(icr_low::vector::get(low));
-
-    return true;
-}
-
-bool
-xen_op_handler::emulate_wrmsr_lvt_timer(
-    eapis::intel_x64::wrmsr_handler::info_t &info)
-{
-    using namespace ::intel_x64::msrs::ia32_vmx_misc;
-    using namespace eapis::intel_x64::lapic::lvt;
-
-    switch (timer::mode::get(info.val)) {
-    case timer::mode::tsc_deadline:
-        break;
-
-    default:
-        bfalert_info(0, "Unexpected LVT timer mode");
-        timer::dump(0, info.val);
-        return false;
-    }
-
-    bfalert_info(0, "Setting LVT timer to deadline mode");
-
-    bfn::call_once(m_tsc_once_flag, [&](){
-        m_pet_divide = preemption_timer_decrement::get();
-        m_pet_vector = timer::vector::get(info.val);
-
-        EMULATE_WRMSR(
-            ::intel_x64::msrs::ia32_tsc_deadline::addr,
-            emulate_wrmsr_tsc_deadline
-        );
-    });
-
-    m_vcpu->lapic_write(timer::indx, info.val);
-
     return true;
 }
 
@@ -942,7 +828,7 @@ xen_op_handler::xen_cpuid_leaf2_handler(
 {
     bfignored(vcpu);
 
-    info.rax = 0x00040B00U; // 4.11.0
+    info.rax = 0x00040B00U; // 4.11
     info.rbx = 0U;
     info.rcx = 0U;
     info.rdx = 0U;
@@ -1201,7 +1087,7 @@ void
 xen_op_handler::SCHEDOP_yield_handler(gsl::not_null<vcpu *> vcpu)
 {
     try {
-        //m_sched_op->handle_yield(vcpu);
+        m_sched_op->handle_yield(vcpu);
         vcpu->set_rax(SUCCESS);
         m_vcpu->return_and_continue();
     }
@@ -1312,7 +1198,7 @@ verify_callback_via(uint64_t via)
     }
 
     const auto vector = via & 0xFFU;
-    if (vector < 0x20 || vector > 0xFF) {
+    if (vector < 0x20U || vector > 0xFFU) {
         throw std::invalid_argument(
             "invalid callback vector: " + std::to_string(vector)
         );
@@ -1408,15 +1294,24 @@ xen_op_handler::reset_vcpu_time_info()
     /// Since we require an invarinat TSC, this shift is not needed so it is
     /// set to 0.
     ///
+    /// Note that system_time is updated by the guest
+    /// There are nice alternative explanations for this structure
+    /// sprinkled throughout the KVM code.
+    ///
+    /// See Documentation/virtual/kvm/msr.txt for more info
+    ///
 
     constexpr const uint64_t GHz = 10e9;
     auto &info = m_shared_info->vcpu_info[0].time;
 
-    info.tsc_timestamp = 0;
     info.system_time = 0;
+
+    /// Constant across updates (for now)
+    info.flags = XEN_PVCLOCK_TSC_STABLE_BIT;
     info.tsc_to_system_mul = (GHz << 32U) / (m_tsc_freq_khz * 1000U);
     info.tsc_shift = 0;
-    info.flags = XEN_PVCLOCK_TSC_STABLE_BIT;
+
+    info.tsc_timestamp = ::x64::read_tsc::get();
 
 //    bfalert_ndec(0, "timestamp", info.tsc_timestamp);
 //    bfalert_ndec(0, "system_time", info.system_time);
@@ -1446,7 +1341,7 @@ xen_op_handler::update_vcpu_time_info()
     // granularity extends to the kHz level.
     //
 
-    //info.version = 1;
+    info.version |= 1ULL;
 
     const uint64_t tsc_mul = info.tsc_to_system_mul;
     const uint64_t tsc_pre = info.tsc_timestamp;
@@ -1455,7 +1350,7 @@ xen_op_handler::update_vcpu_time_info()
     info.tsc_timestamp = tsc_now;
     info.system_time += (((tsc_now - tsc_pre) * tsc_mul) >> 32U);
 
-    //info.version = 0;
+    info.version &= ~1ULL;
 }
 
 shared_info_t *

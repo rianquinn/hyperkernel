@@ -135,6 +135,7 @@ domain::setup_acpi()
     m_fadt->flags = 0x101873U;
     m_fadt->minorrevision = 1;
     m_fadt->hypervisorid = 0xBFU;
+    m_fadt->header.checksum = acpi_checksum(m_fadt.get(), m_fadt->header.length);
 
     auto rsdp_hpa = g_mm->virtptr_to_physint(m_rsdp.get());
     auto xsdt_hpa = g_mm->virtptr_to_physint(m_xsdt.get());
