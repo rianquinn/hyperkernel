@@ -184,6 +184,11 @@ xen_op_handler::xen_op_handler(
     EMULATE_IO_INSTRUCTION(0xCFE, io_ones_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0xCFF, io_ones_handler, io_ignore_handler);
 
+    /// These are the ELCR registers of the PIC
+    ///
+    EMULATE_IO_INSTRUCTION(0x4d0, io_zero_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(0x4d1, io_zero_handler, io_ignore_handler);
+
     this->register_unplug_quirk();
 
     /// TODO:
@@ -371,11 +376,15 @@ tsc_frequency(void)
 
 
     if (denominator == 0 || numerator == 0) {
-        throw std::runtime_error("unsupported system: missing TSC ratio");
+        auto bus = eapis::intel_x64::time::bus_freq_MHz();
+        auto tsc = eapis::intel_x64::time::tsc_freq_MHz(bus);
+
+        return tsc * 1000U;
+        //throw std::runtime_error("unsupported system: missing TSC ratio");
     }
 
-    bfdebug_ndec(0, "TSC ratio", numerator / denominator);
-    bfdebug_ndec(0, "TSC (kHz)", 24000 * numerator / denominator);
+    //bfdebug_ndec(0, "TSC ratio", numerator / denominator);
+    //bfdebug_ndec(0, "TSC (kHz)", 24000 * numerator / denominator);
 
     if (freq == 0) {
         auto bus = eapis::intel_x64::time::bus_freq_MHz();
@@ -598,8 +607,10 @@ xen_op_handler::ia32_apic_base_rdmsr_handler(
 
     auto val = m_vcpu->lapic_base();
     ::intel_x64::msrs::ia32_apic_base::bsp::enable(val);
-    ::intel_x64::msrs::ia32_apic_base::state::enable_x2apic(val);
+//    ::intel_x64::msrs::ia32_apic_base::state::enable_x2apic(val);
     info.val = val;
+
+    bfalert_nhex(0, "reading APIC BASE:", info.val);
 
     return true;
 }
@@ -611,7 +622,9 @@ xen_op_handler::ia32_apic_base_wrmsr_handler(
     bfignored(vcpu);
     bfignored(info);
 
-    bfalert_info(0, "Unexpected write to IA32_APIC_BASE...halting");
+    bfalert_info(0, "Handling IA32_APIC_BASE write...");
+    ::intel_x64::msrs::ia32_apic_base::dump(0, info.val);
+    m_apic_base = info.val;
 
     return false;
 }
@@ -1401,10 +1414,10 @@ xen_op_handler::reset_vcpu_time_info()
     info.tsc_shift = 0;
     info.flags = XEN_PVCLOCK_TSC_STABLE_BIT;
 
-    bfalert_ndec(0, "timestamp", info.tsc_timestamp);
-    bfalert_ndec(0, "system_time", info.system_time);
-    bfalert_ndec(0, "tsc_mul", info.tsc_to_system_mul);
-    bfalert_ndec(0, "shift", info.tsc_shift);
+//    bfalert_ndec(0, "timestamp", info.tsc_timestamp);
+//    bfalert_ndec(0, "system_time", info.system_time);
+//    bfalert_ndec(0, "tsc_mul", info.tsc_to_system_mul);
+//    bfalert_ndec(0, "shift", info.tsc_shift);
 }
 
 void
@@ -1430,6 +1443,7 @@ xen_op_handler::update_vcpu_time_info()
     //
 
     //info.version = 1;
+
     const uint64_t tsc_mul = info.tsc_to_system_mul;
     const uint64_t tsc_pre = info.tsc_timestamp;
     const uint64_t tsc_now = ::x64::read_tsc::get();

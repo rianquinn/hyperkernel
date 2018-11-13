@@ -168,7 +168,7 @@ evtchn_op::setup_ports()
 {
     for (auto p = 1; p < chan_capacity; p++) {
         if (!this->port_is_valid(p)) {
-            bfdebug_ndec(0, "setup_ports: invalid port: ", p)
+            //bfdebug_ndec(0, "setup_ports: invalid port: ", p)
             return;
         }
 

@@ -227,6 +227,7 @@ private:
 
     bfn::once_flag m_tsc_once_flag{};
 
+    uint64_t m_apic_base{};
     uint64_t m_pet_divide{};
     uint64_t m_pet_vector{};
     uint64_t m_tsc_freq_khz{};
