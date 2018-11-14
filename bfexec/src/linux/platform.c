@@ -30,7 +30,7 @@
 #include <bfdriverinterface.h>
 
 #ifndef MMAP_CAPACITY
-#define MMAP_CAPACITY 16
+#define MMAP_CAPACITY 256
 #endif
 
 /* -------------------------------------------------------------------------- */

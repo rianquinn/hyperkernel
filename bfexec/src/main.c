@@ -53,6 +53,7 @@
 //
 
 #define alloc_page() platform_memset(platform_alloc_rwe(0x1000), 0, 0x1000);
+#define alloc_buffer(sz) platform_memset(platform_alloc_rwe((sz)), 0, (sz));
 
 /* -------------------------------------------------------------------------- */
 /* VM                                                                         */
@@ -340,10 +341,19 @@ typedef struct {
     char console[0x1000];
 } reserved_7000_t;
 
+#ifndef REAL_MODE_SIZE
+#define REAL_MODE_SIZE (6 * 0x1000)
+#endif
+
+typedef struct {
+    char rm_trampoline[REAL_MODE_SIZE];
+} reserved_8000_t;
+
 reserved_4000_t *g_reserved_4000 = 0;   /* Xen start info */
 reserved_5000_t *g_reserved_5000 = 0;   /* Xen cmdline */
 reserved_6000_t *g_reserved_6000 = 0;   /* Xen shared info page */
 reserved_7000_t *g_reserved_7000 = 0;   /* Xen console */
+reserved_8000_t *g_reserved_8000 = 0;   /* Real-mode trampoline */
 
 uint64_t g_ram_addr = 0x1000000;
 uint64_t g_ram_size = 0x8000000;
@@ -406,7 +416,19 @@ setup_e820_map()
     ret = __domain_op__add_e820_entry(
         g_vm.domainid,
         0x8000,
-        g_ram_addr - 0x8000,
+        REAL_MODE_SIZE,
+        XEN_HVM_MEMMAP_TYPE_RAM
+    );
+
+    if (ret != SUCCESS) {
+        BFALERT("__domain_op__add_e820_entry failed\n");
+        return FAILURE;
+    }
+
+    ret = __domain_op__add_e820_entry(
+        g_vm.domainid,
+        0x8000 + REAL_MODE_SIZE,
+        g_ram_addr - (0x8000 + REAL_MODE_SIZE),
         XEN_HVM_MEMMAP_TYPE_UNUSABLE
     );
 
@@ -626,6 +648,27 @@ setup_xen_console()
 }
 
 status_t
+setup_rm_trampoline()
+{
+    status_t ret;
+    int size = REAL_MODE_SIZE;
+
+    g_reserved_8000 = (reserved_8000_t *)alloc_buffer(size);
+    if (g_reserved_8000 == 0) {
+        BFALERT("g_reserved_8000 alloc failed: %s\n", strerror(errno));
+        return FAILURE;
+    }
+
+    ret = domain_op__map_buffer((uint64_t)g_reserved_8000, 0x8000, size, MAP_RW);
+    if (ret != BF_SUCCESS) {
+        BFALERT("__domain_op__map_buffer failed\n");
+        return FAILURE;
+    }
+
+    return SUCCESS;
+}
+
+status_t
 setup_xen_disabled()
 {
     status_t ret;
@@ -723,96 +766,88 @@ main(int argc, const char *argv[])
     setup_kill_signal_handler();
     platform_init();
 
-    char *addr = platform_alloc_rw(0x1000);
-    if (!addr) {
-        BFALERT("platform_alloc_rw failed\n");
+    ret = domain_op__create_domain();
+    if (ret != SUCCESS) {
+        BFALERT("create_domain failed\n");
         return EXIT_FAILURE;
     }
 
-    addr[0] = rand() % 256;
-    addr[1] = rand() % 2;
+    ret = setup_e820_map();
+    if (ret != SUCCESS) {
+        BFALERT("setup_e820_map failed\n");
+        goto CLEANUP_VCPU;
+    }
 
-    printf("addr[0]: %02x\n", addr[0]);
-    printf("addr[1]: %02x\n", addr[1]);
+    ret = binary_read(argv[1]);
+    if (ret != SUCCESS) {
+        BFALERT("read_binary failed\n");
+        goto CLEANUP_DOMAIN;
+    }
 
-    platform_free_rw(addr, 0x1000);
+    ret = binary_load();
+    if (ret != SUCCESS) {
+        BFALERT("load_binary failed\n");
+        goto CLEANUP_DOMAIN;
+    }
 
-//    ret = domain_op__create_domain();
-//    if (ret != SUCCESS) {
-//        BFALERT("create_domain failed\n");
-//        return EXIT_FAILURE;
-//    }
-//
-//    ret = setup_e820_map();
-//    if (ret != SUCCESS) {
-//        BFALERT("setup_e820_map failed\n");
-//        goto CLEANUP_VCPU;
-//    }
-//
-//    ret = binary_read(argv[1]);
-//    if (ret != SUCCESS) {
-//        BFALERT("read_binary failed\n");
-//        goto CLEANUP_DOMAIN;
-//    }
-//
-//    ret = binary_load();
-//    if (ret != SUCCESS) {
-//        BFALERT("load_binary failed\n");
-//        goto CLEANUP_DOMAIN;
-//    }
-//
-//    ret = vcpu_op__create_vcpu();
-//    if (ret != SUCCESS) {
-//        BFALERT("create_vcpu failed\n");
-//        goto CLEANUP_DOMAIN;
-//    }
-//
-//    ret = setup_xen_start_info();
-//    if (ret != SUCCESS) {
-//        BFALERT("setup_xen_start_info failed\n");
-//        goto CLEANUP_VCPU;
-//    }
-//
-//    ret = setup_xen_cmdline();
-//    if (ret != SUCCESS) {
-//        BFALERT("setup_xen_cmdline failed\n");
-//        goto CLEANUP_VCPU;
-//    }
-//
-//    ret = setup_xen_shared_info_page();
-//    if (ret != SUCCESS) {
-//        BFALERT("setup_xen_shared_info_page failed\n");
-//        goto CLEANUP_VCPU;
-//    }
-//
-//    ret = setup_xen_console();
-//    if (ret != SUCCESS) {
-//        BFALERT("setup_xen_console failed\n");
-//        goto CLEANUP_VCPU;
-//    }
-//
-//    ret = setup_xen_disabled();
-//    if (ret != SUCCESS) {
-//        BFALERT("setup_xen_disabled failed\n");
-//        goto CLEANUP_VCPU;
-//    }
-//
-//    start_run_thread();
-//    pthread_join(g_vm.run_thread, 0);
-//
-//CLEANUP_VCPU:
-//
-//    ret = vcpu_op__destroy_vcpu();
-//    if (ret != SUCCESS) {
-//        BFALERT("destroy_vcpu failed\n");
-//    }
-//
-//CLEANUP_DOMAIN:
-//
-//    ret = domain_op__destroy_domain();
-//    if (ret != SUCCESS) {
-//        BFALERT("destroy_domain failed\n");
-//    }
+    ret = vcpu_op__create_vcpu();
+    if (ret != SUCCESS) {
+        BFALERT("create_vcpu failed\n");
+        goto CLEANUP_DOMAIN;
+    }
+
+    ret = setup_xen_start_info();
+    if (ret != SUCCESS) {
+        BFALERT("setup_xen_start_info failed\n");
+        goto CLEANUP_VCPU;
+    }
+
+    ret = setup_xen_cmdline();
+    if (ret != SUCCESS) {
+        BFALERT("setup_xen_cmdline failed\n");
+        goto CLEANUP_VCPU;
+    }
+
+    ret = setup_xen_shared_info_page();
+    if (ret != SUCCESS) {
+        BFALERT("setup_xen_shared_info_page failed\n");
+        goto CLEANUP_VCPU;
+    }
+
+    ret = setup_xen_console();
+    if (ret != SUCCESS) {
+        BFALERT("setup_xen_console failed\n");
+        goto CLEANUP_VCPU;
+    }
+
+    ret = setup_rm_trampoline();
+    if (ret != SUCCESS) {
+        BFALERT("setup_rm_trampoline failed\n");
+        goto CLEANUP_VCPU;
+    }
+
+    ret = setup_xen_disabled();
+    if (ret != SUCCESS) {
+        BFALERT("setup_xen_disabled failed\n");
+        goto CLEANUP_VCPU;
+    }
+
+    start_run_thread();
+    pthread_join(g_vm.run_thread, 0);
+
+CLEANUP_VCPU:
+
+    ret = vcpu_op__destroy_vcpu();
+    if (ret != SUCCESS) {
+        BFALERT("destroy_vcpu failed\n");
+    }
+
+CLEANUP_DOMAIN:
+
+    ret = domain_op__destroy_domain();
+    if (ret != SUCCESS) {
+        BFALERT("destroy_domain failed\n");
+    }
 
     return EXIT_SUCCESS;
 }
