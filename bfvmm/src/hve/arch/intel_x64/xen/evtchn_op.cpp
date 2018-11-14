@@ -25,6 +25,25 @@
 #include <hve/arch/intel_x64/vcpu.h>
 #include <hve/arch/intel_x64/xen/evtchn_op.h>
 
+
+// When the guest receives an upcall, it does several things:
+// (transplanted from xen/xen/arch/x86/guest/xen.c)
+//
+// vcpu_info->evtchn_upcall_pending = 0
+// pending = atomic_read(vcpu_info->evtchn_pending_sel)
+//      while (pending) {
+//              b = first_set_bit(pending)
+//              evtchn = shared_info->evtchn_pending[b]
+//              clear_bit(b, &pending)
+//              evtchn &= ~shared_info->evtchn_mask[b]
+//              while (evtchn) {
+//                      port = first_set_bit(evtchn)
+//                      clear_bit(port, &evtchn)
+//                      port += b * BITS_PER_LONG
+//                      *process port*
+//              }
+//      }
+
 // =============================================================================
 // Implementation
 // =============================================================================
@@ -63,8 +82,7 @@ evtchn_op::evtchn_op(
 }
 
 void
-evtchn_op::init_control(
-    gsl::not_null<evtchn_init_control_t *> ctl)
+evtchn_op::init_control(gsl::not_null<evtchn_init_control_t *> ctl)
 {
     expects(ctl->vcpu == m_vcpu->lapicid());
     expects(ctl->offset <= (0x1000 - sizeof(evtchn_fifo_control_block_t)));
@@ -208,8 +226,8 @@ evtchn_op::setup_control_block()
 void
 evtchn_op::map_control_block(uint64_t gfn, uint32_t offset)
 {
-    m_ctl_blk_ump =
-        m_vcpu->map_gpa_4k<uint8_t>(gfn << ::x64::pt::page_shift);
+    const auto gpa = gfn << ::x64::pt::page_shift;
+    m_ctl_blk_ump = m_vcpu->map_gpa_4k<uint8_t>(gpa);
 
     if (!m_ctl_blk_ump) {
         throw std::runtime_error("map_gpa_4k failed");

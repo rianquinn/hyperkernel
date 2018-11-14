@@ -153,7 +153,7 @@ xen_op_handler::xen_op_handler(
     EMULATE_RDMSR(0xFE, rdmsr_zero_handler);                        // MTRRs not supported
     EMULATE_RDMSR(0x2FF, rdmsr_zero_handler);                       // MTRRs not supported
 
-    vcpu->pass_through_msr_access(0x140);                           // Pass-through user mode montior/mwait
+    vcpu->pass_through_msr_access(0x140); // Pass-through user-mode montior/mwait
 
     // We effectively pass this through to the guest already
     // through the eapis::intel_x64::timer::tsc_freq_MHz
@@ -184,9 +184,9 @@ xen_op_handler::xen_op_handler(
     ADD_CPUID_HANDLER(0x80000000, cpuid_pass_through_handler);      // TODO: 0 reserved bits
     ADD_CPUID_HANDLER(0x80000001, cpuid_leaf80000001_handler);      // TODO: 0 reserved bits
 
-    ADD_CPUID_HANDLER(0x80000002, cpuid_pass_through_handler);      // processor brand string continued TODO: 0 reserved bits
-    ADD_CPUID_HANDLER(0x80000003, cpuid_pass_through_handler);      // processor brand string continued TODO: 0 reserved bits
-    ADD_CPUID_HANDLER(0x80000004, cpuid_pass_through_handler);      // processor brand string continued TODO: 0 reserved bits
+    ADD_CPUID_HANDLER(0x80000002, cpuid_pass_through_handler);      // brand str cont. TODO: 0 reserved bits
+    ADD_CPUID_HANDLER(0x80000003, cpuid_pass_through_handler);      // brand str cont. TODO: 0 reserved bits
+    ADD_CPUID_HANDLER(0x80000004, cpuid_pass_through_handler);      // brand str cont. TODO: 0 reserved bits
 
     ADD_CPUID_HANDLER(0x80000007, cpuid_pass_through_handler);      // TODO: 0 reserved bits
     ADD_CPUID_HANDLER(0x80000008, cpuid_pass_through_handler);      // TODO: 0 reserved bits
@@ -197,10 +197,17 @@ xen_op_handler::xen_op_handler(
     EMULATE_IO_INSTRUCTION(0xCFE, io_ones_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0xCFF, io_ones_handler, io_ignore_handler);
 
-    /// These are the ELCR registers of the PIC
+    /// ACPI SCI interrupt trigger mode
+    EMULATE_IO_INSTRUCTION(0x4D0, io_zero_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(0x4D1, io_zero_handler, io_ignore_handler);
+
+    /// Ports used for TSC calibration against the PIT. See
+    /// arch/x86/kernel/tsc.c:pit_calibrate_tsc for detail.
+    /// Note that these ports are accessed on the Intel NUC.
     ///
-    EMULATE_IO_INSTRUCTION(0x4d0, io_zero_handler, io_ignore_handler);
-    EMULATE_IO_INSTRUCTION(0x4d1, io_zero_handler, io_ignore_handler);
+    vcpu->pass_through_io_accesses(0x42);
+    vcpu->pass_through_io_accesses(0x43);
+    vcpu->pass_through_io_accesses(0x61);
 
     this->register_unplug_quirk();
 
@@ -651,6 +658,9 @@ xen_op_handler::ia32_apic_base_rdmsr_handler(
     return true;
 }
 
+// We can't use x2apic with a linux domU unless we disable
+// XENFEAT_hvm_pirqs and XENFEAT_hvm_callback_via
+//
 bool
 xen_op_handler::ia32_apic_base_wrmsr_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::wrmsr_handler::info_t &info)
