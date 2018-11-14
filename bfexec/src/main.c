@@ -723,82 +723,96 @@ main(int argc, const char *argv[])
     setup_kill_signal_handler();
     platform_init();
 
-    ret = domain_op__create_domain();
-    if (ret != SUCCESS) {
-        BFALERT("create_domain failed\n");
+    char *addr = platform_alloc_rw(0x1000);
+    if (!addr) {
+        BFALERT("platform_alloc_rw failed\n");
         return EXIT_FAILURE;
     }
 
-    ret = setup_e820_map();
-    if (ret != SUCCESS) {
-        BFALERT("setup_e820_map failed\n");
-        goto CLEANUP_VCPU;
-    }
+    addr[0] = rand() % 256;
+    addr[1] = rand() % 2;
 
-    ret = binary_read(argv[1]);
-    if (ret != SUCCESS) {
-        BFALERT("read_binary failed\n");
-        goto CLEANUP_DOMAIN;
-    }
+    printf("addr[0]: %02x\n", addr[0]);
+    printf("addr[1]: %02x\n", addr[1]);
 
-    ret = binary_load();
-    if (ret != SUCCESS) {
-        BFALERT("load_binary failed\n");
-        goto CLEANUP_DOMAIN;
-    }
+    platform_free_rw(addr, 0x1000);
 
-    ret = vcpu_op__create_vcpu();
-    if (ret != SUCCESS) {
-        BFALERT("create_vcpu failed\n");
-        goto CLEANUP_DOMAIN;
-    }
-
-    ret = setup_xen_start_info();
-    if (ret != SUCCESS) {
-        BFALERT("setup_xen_start_info failed\n");
-        goto CLEANUP_VCPU;
-    }
-
-    ret = setup_xen_cmdline();
-    if (ret != SUCCESS) {
-        BFALERT("setup_xen_cmdline failed\n");
-        goto CLEANUP_VCPU;
-    }
-
-    ret = setup_xen_shared_info_page();
-    if (ret != SUCCESS) {
-        BFALERT("setup_xen_shared_info_page failed\n");
-        goto CLEANUP_VCPU;
-    }
-
-    ret = setup_xen_console();
-    if (ret != SUCCESS) {
-        BFALERT("setup_xen_console failed\n");
-        goto CLEANUP_VCPU;
-    }
-
-    ret = setup_xen_disabled();
-    if (ret != SUCCESS) {
-        BFALERT("setup_xen_disabled failed\n");
-        goto CLEANUP_VCPU;
-    }
-
-    start_run_thread();
-    pthread_join(g_vm.run_thread, 0);
-
-CLEANUP_VCPU:
-
-    ret = vcpu_op__destroy_vcpu();
-    if (ret != SUCCESS) {
-        BFALERT("destroy_vcpu failed\n");
-    }
-
-CLEANUP_DOMAIN:
-
-    ret = domain_op__destroy_domain();
-    if (ret != SUCCESS) {
-        BFALERT("destroy_domain failed\n");
-    }
+//    ret = domain_op__create_domain();
+//    if (ret != SUCCESS) {
+//        BFALERT("create_domain failed\n");
+//        return EXIT_FAILURE;
+//    }
+//
+//    ret = setup_e820_map();
+//    if (ret != SUCCESS) {
+//        BFALERT("setup_e820_map failed\n");
+//        goto CLEANUP_VCPU;
+//    }
+//
+//    ret = binary_read(argv[1]);
+//    if (ret != SUCCESS) {
+//        BFALERT("read_binary failed\n");
+//        goto CLEANUP_DOMAIN;
+//    }
+//
+//    ret = binary_load();
+//    if (ret != SUCCESS) {
+//        BFALERT("load_binary failed\n");
+//        goto CLEANUP_DOMAIN;
+//    }
+//
+//    ret = vcpu_op__create_vcpu();
+//    if (ret != SUCCESS) {
+//        BFALERT("create_vcpu failed\n");
+//        goto CLEANUP_DOMAIN;
+//    }
+//
+//    ret = setup_xen_start_info();
+//    if (ret != SUCCESS) {
+//        BFALERT("setup_xen_start_info failed\n");
+//        goto CLEANUP_VCPU;
+//    }
+//
+//    ret = setup_xen_cmdline();
+//    if (ret != SUCCESS) {
+//        BFALERT("setup_xen_cmdline failed\n");
+//        goto CLEANUP_VCPU;
+//    }
+//
+//    ret = setup_xen_shared_info_page();
+//    if (ret != SUCCESS) {
+//        BFALERT("setup_xen_shared_info_page failed\n");
+//        goto CLEANUP_VCPU;
+//    }
+//
+//    ret = setup_xen_console();
+//    if (ret != SUCCESS) {
+//        BFALERT("setup_xen_console failed\n");
+//        goto CLEANUP_VCPU;
+//    }
+//
+//    ret = setup_xen_disabled();
+//    if (ret != SUCCESS) {
+//        BFALERT("setup_xen_disabled failed\n");
+//        goto CLEANUP_VCPU;
+//    }
+//
+//    start_run_thread();
+//    pthread_join(g_vm.run_thread, 0);
+//
+//CLEANUP_VCPU:
+//
+//    ret = vcpu_op__destroy_vcpu();
+//    if (ret != SUCCESS) {
+//        BFALERT("destroy_vcpu failed\n");
+//    }
+//
+//CLEANUP_DOMAIN:
+//
+//    ret = domain_op__destroy_domain();
+//    if (ret != SUCCESS) {
+//        BFALERT("destroy_domain failed\n");
+//    }
 
     return EXIT_SUCCESS;
 }

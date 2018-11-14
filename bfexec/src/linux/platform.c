@@ -45,29 +45,54 @@ struct hkd_mmap *g_mmap[MMAP_CAPACITY];
 /* Internal helpers                                                           */
 /* -------------------------------------------------------------------------- */
 
-static struct hkd_mmap *mmap_init(uint64_t len, int prot)
+static struct hkd_mmap *mmap_alloc(uint64_t size, int prot)
 {
-    struct hkd_mmap *mm = malloc(sizeof(struct hkd_mmap));
+    if (g_mmap_size >= MMAP_CAPACITY) {
+        return NULL;
+    }
 
+    struct hkd_mmap *mm = malloc(sizeof(struct hkd_mmap));
     if (!mm) {
         return NULL;
     }
 
-    mm->size = len;
+    mm->size = size;
     mm->prot = prot;
     mm->flags = 0;
 
+    int ret = ioctl(g_hkd, IOCTL_MMAP, mm);
+    if (ret < 0) {
+        free(mm);
+        return NULL;
+    }
+
+    g_mmap[g_mmap_size++] = mm;
     return mm;
 }
 
-static struct hkd_mmap *mmap_init_rw(uint64_t len)
+static void mmap_free(void *addr)
 {
-    return mmap_init(len, PROT_READ | PROT_WRITE);
-}
+    if (!addr) {
+        return;
+    }
 
-static struct hkd_mmap *mmap_init_rwe(uint64_t len)
-{
-    return mmap_init(len, PROT_READ | PROT_WRITE | PROT_EXEC);
+    for (int i = 0; i < g_mmap_size; i++) {
+        struct hkd_mmap *mm = g_mmap[i];
+
+        if (mm->addr != addr) {
+            continue;
+        }
+
+        ioctl(g_hkd, IOCTL_MUNMAP, mm);
+        free(mm);
+        g_mmap[i] = NULL;
+
+        for (int j = i + 1; j < g_mmap_size; j++) {
+            g_mmap[j - 1] = g_mmap[j];
+        }
+
+        g_mmap_size--;
+    }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -77,8 +102,9 @@ static struct hkd_mmap *mmap_init_rwe(uint64_t len)
 int64_t platform_init(void)
 {
     g_hkd = open("/dev/hkd", O_RDWR);
+
     if (g_hkd == -1) {
-        printf("failed to open /dev/hkd:", strerror(errno));
+        printf("failed to open /dev/hkd: \n", strerror(errno));
         return -ENODEV;
     }
 
@@ -88,45 +114,24 @@ int64_t platform_init(void)
 
 void *
 platform_alloc_rw(uint64_t len)
-{
-    if (g_mmap_size >= MMAP_CAPACITY) {
-        return NULL;
-    }
-
-    struct hkd_mmap *mm = mmap_init_rw(len);
-    if (!mm) {
-        return NULL;
-    }
-
-    g_mmap[g_mmap_size++] = mm;
-
-    int ret = ioctl(g_hkd, IOCTL_MMAP, mm);
-    if (ret < 0) {
-        free(mm);
-        return NULL;
-    }
-
-    return mm;
-}
+{ return mmap_alloc(len, PROT_READ | PROT_WRITE); }
 
 void *
 platform_alloc_rwe(uint64_t len)
-{
-    return aligned_alloc(0x1000, len);
-}
+{ return mmap_alloc(len, PROT_READ | PROT_WRITE | PROT_EXEC); }
 
 void
 platform_free_rw(void *addr, uint64_t len)
 {
     bfignored(len);
-    free(addr);
+    mmap_free(addr);
 }
 
 void
 platform_free_rwe(void *addr, uint64_t len)
 {
     bfignored(len);
-    free(addr);
+    mmap_free(addr);
 }
 
 void *

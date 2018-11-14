@@ -44,6 +44,7 @@ extern "C" {
 #endif
 
 #define IOCTL_MMAP_CMD 0x801
+#define IOCTL_MUNMAP_CMD 0x802
 
 /**
  * struct hkd_mmap
@@ -68,6 +69,7 @@ struct hkd_mmap {
 #ifdef __linux__
 
 #define IOCTL_MMAP _IOWR(HKD_MAGIC, IOCTL_MMAP_CMD, struct hkd_mmap)
+#define IOCTL_MUNMAP _IOW(HKD_MAGIC, IOCTL_MUNMAP_CMD, struct hkd_mmap)
 
 #endif
 
