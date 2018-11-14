@@ -17,10 +17,30 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <errno.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include <bfplatform.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+
+#include <bfdriverinterface.h>
+
+int g_hkd;
+
+int64_t
+platform_init(void)
+{
+    g_hkd = open("/dev/hkd", O_RDWR);
+
+    if (g_hkd == -1) {
+        printf("failed to open /dev/hkd:", strerror(errno));
+        return -ENODEV;
+    }
+
+    return BF_SUCCESS;
+}
 
 void *
 platform_alloc_rw(uint64_t len)

@@ -721,6 +721,7 @@ main(int argc, const char *argv[])
 
     set_affinity(0);
     setup_kill_signal_handler();
+    platform_init();
 
     ret = domain_op__create_domain();
     if (ret != SUCCESS) {

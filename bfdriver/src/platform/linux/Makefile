@@ -1,6 +1,6 @@
 #
-# Bareflank Hypervisor
-# Copyright (C) 2015 Assured Information Security, Inc.
+# Bareflank Hyperkernel
+# Copyright (C) 2018 Assured Information Security, Inc.
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
@@ -16,22 +16,36 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-cmake_minimum_required(VERSION 3.6)
-project(bfexec C CXX)
+TARGET_MODULE:=hkd
 
-include(${SOURCE_CMAKE_DIR}/project.cmake)
-init_project(
-    INCLUDES ${CMAKE_CURRENT_LIST_DIR}/../bfsdk/include
-    INCLUDES ${CMAKE_CURRENT_LIST_DIR}/../include
-)
+ifneq ($(KERNELRELEASE),)
+	obj-m := $(TARGET_MODULE).o
 
-list(APPEND SOURCES
-    src/main.c
-    src/linux/platform.c
-)
+	$(TARGET_MODULE)-objs += entry.o
 
-add_executable(bfexec ${SOURCES})
-target_link_static_libraries(bfexec bfintrinsics)
-target_link_libraries(bfexec pthread)
+	EXTRA_CFLAGS += -DKERNEL
+	EXTRA_CFLAGS += -DLINUX_KERNEL
+	EXTRA_CFLAGS += -I$(src)/../../../../bfsdk/include/
 
-install(TARGETS bfexec DESTINATION bin)
+# TODO: pass in cmake dirs
+	EXTRA_CFLAGS += -I$(src)/../../../../../hypervisor/bfsdk/include/
+
+else
+	BUILDSYSTEM_DIR:=/lib/modules/$(shell uname -r)/build
+	PWD:=$(shell pwd)
+
+all:
+	$(MAKE) -C $(BUILDSYSTEM_DIR) M=$(PWD) modules
+
+clean:
+	$(MAKE) -C $(BUILDSYSTEM_DIR) M=$(PWD) clean
+	rm -f ../../common.o
+	rm -f ../../.common.o.cmd
+
+load:
+	insmod ./$(TARGET_MODULE).ko
+
+unload:
+	-rmmod ./$(TARGET_MODULE).ko
+
+endif
