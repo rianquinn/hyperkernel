@@ -1,1 +1,0 @@
-cmd_/home/dev/bareflank/kernel/bfdriver/src/platform/linux/hkd.o := ld -m elf_x86_64  -z max-page-size=0x200000   -r -o /home/dev/bareflank/kernel/bfdriver/src/platform/linux/hkd.o /home/dev/bareflank/kernel/bfdriver/src/platform/linux/entry.o /home/dev/bareflank/kernel/bfdriver/src/platform/linux/event.o 

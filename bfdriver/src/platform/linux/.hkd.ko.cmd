@@ -1,1 +1,0 @@
-cmd_/home/dev/bareflank/kernel/bfdriver/src/platform/linux/hkd.ko := ld -r -m elf_x86_64  -z max-page-size=0x200000 -T ./scripts/module-common.lds  --build-id  -o /home/dev/bareflank/kernel/bfdriver/src/platform/linux/hkd.ko /home/dev/bareflank/kernel/bfdriver/src/platform/linux/hkd.o /home/dev/bareflank/kernel/bfdriver/src/platform/linux/hkd.mod.o ;  true
