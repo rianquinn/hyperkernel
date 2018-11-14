@@ -43,7 +43,7 @@ extern "C" {
 #define HKD_DEVICETYPE 0xBEEF
 #endif
 
-#define IOCTL_MAP_MEMORY_CMD 0x801
+#define IOCTL_MMAP_CMD 0x801
 
 /**
  * struct hkd_mmap
@@ -67,7 +67,7 @@ struct hkd_mmap {
 
 #ifdef __linux__
 
-#define IOCTL_MAP_MEMORY _IOWR(HKD_MAGIC, IOCTL_MAP_MEMORY_CMD, struct hkd_mmap)
+#define IOCTL_MMAP _IOWR(HKD_MAGIC, IOCTL_MMAP_CMD, struct hkd_mmap)
 
 #endif
 

@@ -30,8 +30,8 @@
 /* -------------------------------------------------------------------------- */
 
 #define MMAP_FLAGS \
-    (MAP_POPULATE  | /* pre-fault associated page table entries */ \
-     MAP_LOCKED    | /* don't page out to disk */ \
+    (MAP_POPULATE  | /* populate (pre-fault) associated page table entries */ \
+     MAP_LOCKED    | /* never page out to disk */ \
      MAP_PRIVATE   | /* keep changes private */ \
      MAP_ANONYMOUS   /* don't use a file */ )
 
@@ -60,37 +60,37 @@ dev_release(struct inode *inode, struct file *file)
 }
 
 static long
-ioctl_map_memory(struct hkd_mmap *user_mmap)
+ioctl_mmap(struct hkd_mmap *user_map)
 {
     int32_t err;
     uint64_t addr;
-    struct hkd_mmap mmap;
+    struct hkd_mmap map;
 
-    if (!user_mmap) {
-        BFALERT("hkd: IOCTL_MAP_MEMORY: failed with user_mmap == NULL\n");
+    if (!user_map) {
+        BFALERT("hkd: IOCTL_MMAP: failed with user_map == NULL\n");
         return BF_IOCTL_FAILURE;
     }
 
-    err = copy_from_user(&mmap, user_mmap, sizeof(struct hkd_mmap));
+    err = copy_from_user(&map, user_map, sizeof(struct hkd_mmap));
     if (err != 0) {
-        BFALERT("hkd: IOCTL_MAP_MEMORY: failed to copy memory from userspace\n");
+        BFALERT("hkd: IOCTL_MMAP: failed to copy memory from userspace\n");
         return BF_IOCTL_FAILURE;
     }
 
-    if (!mmap.size) {
-        BFALERT("hkd: IOCTL_MAP_MEMORY: size must be > 0\n");
+    if (!map.size) {
+        BFALERT("hkd: IOCTL_MMAP: size must be > 0\n");
         return BF_IOCTL_FAILURE;
     }
 
-    addr = vm_mmap(NULL, 0, mmap.size, mmap.prot, mmap.flags | MMAP_FLAGS, 0);
+    addr = vm_mmap(NULL, 0, map.size, map.prot, map.flags | MMAP_FLAGS, 0);
     if (!addr) {
-        BFALERT("hkd: IOCTL_MAP_MEMORY: vm_mmap failed\n");
+        BFALERT("hkd: IOCTL_MMAP: vm_mmap failed\n");
         return BF_IOCTL_FAILURE;
     }
 
-    err = put_user((void __user *)addr, &user_mmap->addr);
+    err = put_user((void __user *)addr, &user_map->addr);
     if (err) {
-        BFALERT("hkd: IOCTL_MAP_MEMORY: put_user faulted\n");
+        BFALERT("hkd: IOCTL_MMAP: put_user faulted\n");
         return BF_IOCTL_FAILURE;
     }
 
@@ -105,8 +105,8 @@ dev_unlocked_ioctl(struct file *file,
     (void) file;
 
     switch (cmd) {
-        case IOCTL_MAP_MEMORY:
-            return ioctl_map_memory((struct hkd_mmap *)arg);
+        case IOCTL_MMAP:
+            return ioctl_mmap((struct hkd_mmap *)arg);
 
         default:
             return BF_IOCTL_FAILURE;

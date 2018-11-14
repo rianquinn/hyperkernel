@@ -560,7 +560,7 @@ status_t
 setup_xen_cmdline()
 {
     status_t ret;
-    const char *cmdline = "console=uart,io,0x3f8,115200n8 apic=debug show_lapic=all";
+    const char *cmdline = "console=uart,io,0x3f8,115200n8 apic=debug show_lapic=all init=/hello";
 
     /**
      * TODO:
