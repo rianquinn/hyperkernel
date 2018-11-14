@@ -189,6 +189,10 @@ private:
     //    gsl::not_null<vcpu_t *> vcpu,
     //    eapis::intel_x64::ept_violation_handler::info_t &info);
 
+    bool debug_boot(
+        gsl::not_null<vcpu_t *> vcpu,
+        eapis::intel_x64::ept_violation_handler::info_t &info);
+
     bool xapic_handle_write(
         gsl::not_null<vcpu_t *> vcpu,
         eapis::intel_x64::ept_violation_handler::info_t &info);

@@ -83,11 +83,8 @@ constexpr auto xen_msr_debug_nhex       = 0xC0000700;
 #define ADD_EPT_WRITE_HANDLER(b)                                                                    \
     m_vcpu->add_ept_write_violation_handler(make_delegate(ept_violation_handler, b))
 
-//#define ADD_EPT_READ_HANDLER(b)                                                                     \
-//    m_vcpu->add_ept_read_violation_handler(make_delegate(ept_violation_handler, b))
-//
-//#define ADD_VMX_PET_HANDLER(b)                                                                      \
-//    m_vcpu->add_vmx_preemption_timer_handler(make_delegate(vmx_preemption_timer_handler, b))
+#define ADD_EPT_READ_HANDLER(b)                                                                     \
+    m_vcpu->add_ept_read_violation_handler(make_delegate(ept_violation_handler, b))
 
 // =============================================================================
 // Implementation
@@ -223,6 +220,7 @@ xen_op_handler::xen_op_handler(
     vcpu->pass_through_io_accesses(0x3fd);
 
     ADD_EPT_WRITE_HANDLER(xapic_handle_write);
+    ADD_EPT_READ_HANDLER(debug_boot);
 }
 
 static uint64_t
@@ -454,6 +452,34 @@ xen_op_handler::xapic_handle_write_icr(uint64_t low)
 }
 
 bool
+xen_op_handler::debug_boot(
+    gsl::not_null<vcpu_t *> vcpu,
+    eapis::intel_x64::ept_violation_handler::info_t &info)
+{
+    try {
+        if (info.gpa >= 0x1000000 && info.gpa <= 0x1001000) {
+            const auto len = ::intel_x64::vmcs::vm_exit_instruction_length::get();
+            const auto rip = ::intel_x64::vmcs::guest_rip::get();
+
+            auto hkv = vcpu_cast(vcpu);
+            auto ump = hkv->map_gva_4k<uint8_t>(rip, len);
+            if (!ump) {
+                throw std::runtime_error("handle_xapic_write::map_gva_4k failed");
+            }
+
+            printf("insn bytes: ");
+            print_insn(ump.get(), len);
+            throw std::runtime_error("debug_boot error");
+        }
+    }
+    catchall({
+        vcpu->set_rax(FAILURE);
+    })
+
+    return false;
+}
+
+bool
 xen_op_handler::xapic_handle_write(
     gsl::not_null<vcpu_t *> vcpu,
     eapis::intel_x64::ept_violation_handler::info_t &info)
@@ -464,7 +490,6 @@ xen_op_handler::xapic_handle_write(
     if (bfn::upper(info.gpa) != hkv->lapic_base()) {
         return false;
     }
-
 
     const auto idx = bfn::lower(info.gpa) >> 2;
     if (idx == eoi::indx) {
@@ -488,12 +513,12 @@ xen_op_handler::xapic_handle_write(
 
     const auto buf = itr->second.get();
 
-    printf("xapic_write: ");
-    print_insn(buf, len);
+//    printf("xapic_write: ");
+//    print_insn(buf, len);
 
     hyperkernel::intel_x64::insn_decoder dec(buf, len);
     const auto val = src_op_value(vcpu, dec.src_op());
-    printf(" value: 0x%08lx\n", val);
+//    printf(" value: 0x%08lx\n", val);
 
     switch (idx) {
         case icr_low::indx:
@@ -513,7 +538,7 @@ xen_op_handler::xapic_handle_write(
         case lvt::lint1::indx:
         case lvt::error::indx:
         case esr::indx:
-            bfalert_nhex(0, "received xAPIC write @ offset:", idx << 2);
+//            bfalert_nhex(0, "received xAPIC write @ offset:", idx << 2);
             m_vcpu->lapic_write(idx, val);
             break;
 
@@ -620,10 +645,8 @@ xen_op_handler::ia32_apic_base_rdmsr_handler(
 
     auto val = m_vcpu->lapic_base();
     ::intel_x64::msrs::ia32_apic_base::bsp::enable(val);
-//    ::intel_x64::msrs::ia32_apic_base::state::enable_x2apic(val);
+    m_apic_base = val;
     info.val = val;
-
-    bfalert_nhex(0, "Reading APIC BASE:", info.val);
 
     return true;
 }
@@ -633,10 +656,7 @@ xen_op_handler::ia32_apic_base_wrmsr_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::wrmsr_handler::info_t &info)
 {
     using namespace ::intel_x64::msrs::ia32_apic_base;
-
     bfignored(vcpu);
-
-    bfalert_info(0, "Writing APIC BASE:");
 
     switch (state::get(info.val)) {
         case state::xapic:
