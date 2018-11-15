@@ -25,6 +25,7 @@
 #include <hve/arch/intel_x64/xen/public/event_channel.h>
 #include <hve/arch/intel_x64/xen/public/memory.h>
 #include <hve/arch/intel_x64/xen/public/version.h>
+#include <hve/arch/intel_x64/xen/public/vcpu.h>
 #include <hve/arch/intel_x64/xen/public/hvm/hvm_op.h>
 #include <hve/arch/intel_x64/xen/public/hvm/params.h>
 #include <hve/arch/intel_x64/xen/public/arch-x86/cpuid.h>
@@ -59,6 +60,10 @@ constexpr auto xen_msr_debug_nhex       = 0xC0000700;
 #define ADD_CPUID_HANDLER(a,b)                                                                      \
     m_vcpu->add_cpuid_handler(                                                                      \
         a, make_delegate(cpuid_handler, b))
+
+#define ADD_RDMSR_HANDLER(a,b)                                                                      \
+    m_vcpu->add_rdmsr_handler(                                                                      \
+        a, make_delegate(rdmsr_handler, b))
 
 #define EMULATE_CPUID(a,b)                                                                          \
     m_vcpu->emulate_cpuid(                                                                          \
@@ -124,6 +129,7 @@ xen_op_handler::xen_op_handler(
     ADD_VMCALL_HANDLER(HYPERVISOR_xen_version);
     ADD_VMCALL_HANDLER(HYPERVISOR_hvm_op);
     ADD_VMCALL_HANDLER(HYPERVISOR_event_channel_op);
+    ADD_VMCALL_HANDLER(HYPERVISOR_vcpu_op);
     // ADD_VMCALL_HANDLER(HYPERVISOR_sched_op);
 
     if (vcpu->is_domU()) {
@@ -165,7 +171,7 @@ xen_op_handler::xen_op_handler(
     EMULATE_WRMSR(::intel_x64::msrs::ia32_apic_base::addr,
                   ia32_apic_base_wrmsr_handler);
 
-    EMULATE_RDMSR(0x1A0, ia32_misc_enable_rdmsr_handler);           // TODO: use namespace name
+    ADD_RDMSR_HANDLER(0x1A0, ia32_misc_enable_rdmsr_handler);       // TODO: use namespace name
     EMULATE_WRMSR(0x1A0, ia32_misc_enable_wrmsr_handler);           // TODO: use namespace name
 
     ADD_CPUID_HANDLER(0x0, cpuid_pass_through_handler);
@@ -628,9 +634,27 @@ xen_op_handler::ia32_misc_enable_rdmsr_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::rdmsr_handler::info_t &info)
 {
     bfignored(vcpu);
-    using namespace ::intel_x64::msrs;
+    using namespace ::intel_x64::msrs::ia32_misc_enable;
 
-    info.val = 0;
+    // Pass through
+    // - fast strings
+    // - monitor FSM
+    // - xd bit disable
+    //
+    // and disable everything else for now
+    //
+    auto_therm_control::disable(info.val);
+    perf_monitor::disable(info.val);
+    branch_trace_storage::disable(info.val);
+    processor_sampling::disable(info.val);
+    intel_speedstep::disable(info.val);
+    limit_cpuid_maxval::disable(info.val);
+    xtpr_message::disable(info.val);
+
+    // Clear reserved bits
+    //
+    info.val &= ~0xFFFFFFFBFF3AE776U;
+
     return true;
 }
 
@@ -1110,6 +1134,37 @@ xen_op_handler::XENVER_get_features_handler(
     catchall({
         vcpu->set_rax(FAILURE);
     })
+}
+
+// -----------------------------------------------------------------------------
+// HYPERVISOR_vcpu_op
+// -----------------------------------------------------------------------------
+
+bool
+xen_op_handler::HYPERVISOR_vcpu_op(
+    gsl::not_null<vcpu *> vcpu)
+{
+    if (vcpu->rax() != __HYPERVISOR_vcpu_op) {
+        return false;
+    }
+
+    switch (vcpu->rdi()) {
+        case VCPUOP_stop_periodic_timer:
+            this->VCPUOP_stop_periodic_timer_handler(vcpu);
+            return true;
+
+        default:
+            break;
+    };
+
+    throw std::runtime_error("unknown HYPERVISOR_vcpu_op: " +
+                             std::to_string(vcpu->rdi()));
+}
+
+void
+xen_op_handler::VCPUOP_stop_periodic_timer_handler(gsl::not_null<vcpu *> vcpu)
+{
+    vcpu->set_rax(SUCCESS);
 }
 
 // -----------------------------------------------------------------------------

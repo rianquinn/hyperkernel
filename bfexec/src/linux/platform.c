@@ -100,9 +100,6 @@ int64_t platform_init(void)
         return EXIT_FAILURE;
     }
 
-    printf("memlock cur: %x max: %x\n", ml.rlim_cur, ml.rlim_max);
-    printf("as      cur: %x max: %x\n", as.rlim_cur, as.rlim_max);
-
     /**
      * For simplicity, we ask the kernel to lock all future pages in memory.
      * Every byte of memory allocated from this point forward will be locked
