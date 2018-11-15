@@ -171,6 +171,7 @@ private:
 
     bool HYPERVISOR_vcpu_op(gsl::not_null<vcpu *> vcpu);
     void VCPUOP_stop_periodic_timer_handler(gsl::not_null<vcpu *> vcpu);
+    void VCPUOP_register_vcpu_time_memory_area_handler(gsl::not_null<vcpu *> vcpu);
 
     bool HYPERVISOR_hvm_op(gsl::not_null<vcpu *> vcpu);
     void HVMOP_set_param_handler(gsl::not_null<vcpu *> vcpu);
@@ -233,6 +234,7 @@ private:
 
     uint64_t m_hypercall_page_gpa{};
 
+    eapis::x64::unique_map<vcpu_time_info_t> m_time_info;
     eapis::x64::unique_map<shared_info_t> m_shared_info;
     eapis::x64::unique_map<uint8_t> m_console;
 

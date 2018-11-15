@@ -46,6 +46,8 @@ constexpr auto xen_msr_hypercall_page   = 0xC0000500;
 constexpr auto xen_msr_debug_ndec       = 0xC0000600;
 constexpr auto xen_msr_debug_nhex       = 0xC0000700;
 
+constexpr auto GHz = 1000000000ULL;
+
 // =============================================================================
 // Macros
 // =============================================================================
@@ -1153,6 +1155,10 @@ xen_op_handler::HYPERVISOR_vcpu_op(
             this->VCPUOP_stop_periodic_timer_handler(vcpu);
             return true;
 
+        case VCPUOP_register_vcpu_time_memory_area:
+            this->VCPUOP_register_vcpu_time_memory_area_handler(vcpu);
+            return true;
+
         default:
             break;
     };
@@ -1165,6 +1171,30 @@ void
 xen_op_handler::VCPUOP_stop_periodic_timer_handler(gsl::not_null<vcpu *> vcpu)
 {
     vcpu->set_rax(SUCCESS);
+}
+
+void
+xen_op_handler::VCPUOP_register_vcpu_time_memory_area_handler(
+    gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        expects(m_tsc_freq_khz > 0);
+        expects(vcpu->rsi() == 0);
+
+        auto arg = vcpu->map_arg<vcpu_register_time_memory_area_t>(vcpu->rdx());
+
+        m_time_info = vcpu->map_arg<vcpu_time_info_t>(arg->addr.v);
+
+        m_time_info->system_time = 0;
+        m_time_info->flags = XEN_PVCLOCK_TSC_STABLE_BIT;
+        m_time_info->tsc_to_system_mul = (GHz << 32U) / (m_tsc_freq_khz * 1000U);
+        m_time_info->tsc_shift = 0;
+        m_time_info->tsc_timestamp = ::x64::read_tsc::get();
+
+        vcpu->set_rax(SUCCESS);
+    } catchall ({
+        vcpu->set_rax(FAILURE);
+    })
 }
 
 // -----------------------------------------------------------------------------
@@ -1402,14 +1432,12 @@ xen_op_handler::reset_vcpu_time_info()
     /// Since we require an invarinat TSC, this shift is not needed so it is
     /// set to 0.
     ///
-    /// Note that system_time is updated by the guest
-    /// There are nice alternative explanations for this structure
-    /// sprinkled throughout the KVM code.
-    ///
-    /// See Documentation/virtual/kvm/msr.txt for more info
+    /// Note that system_time is in nanoseconds and is updated by the guest.
+    /// There are nice alternative explanations for this structure sprinkled
+    /// throughout the KVM code. See Documentation/virtual/kvm/msr.txt for
+    /// more info.
     ///
 
-    constexpr const uint64_t GHz = 10e9;
     auto &info = m_shared_info->vcpu_info[0].time;
 
     info.system_time = 0;
@@ -1420,11 +1448,32 @@ xen_op_handler::reset_vcpu_time_info()
     info.tsc_shift = 0;
 
     info.tsc_timestamp = ::x64::read_tsc::get();
+}
 
-//    bfalert_ndec(0, "timestamp", info.tsc_timestamp);
-//    bfalert_ndec(0, "system_time", info.system_time);
-//    bfalert_ndec(0, "tsc_mul", info.tsc_to_system_mul);
-//    bfalert_ndec(0, "shift", info.tsc_shift);
+static void update_time_info(gsl::not_null<vcpu_time_info_t *> info)
+{
+    // The xen.h comments suggest that we need to flip the version to prevent
+    // races. Since we only have one vCPU right now, we don't really need to,
+    // but once we have multiple vCPUs, another vCPU may try to read this
+    // while we are updating.
+    //
+    // Note that we do our calculations using MHz and not kHz. The reason is
+    // even with a 64bit number, we run the risk of overflowing with kHz.
+    // The issue with using MHz is the CPU frequency is cut off, which could
+    // result in a small amount of drift, since the CPU frequency likely
+    // granularity extends to the kHz level.
+    //
+
+    info->version |= 1ULL;
+
+    const uint64_t tsc_mul = info->tsc_to_system_mul;
+    const uint64_t tsc_pre = info->tsc_timestamp;
+    const uint64_t tsc_now = ::x64::read_tsc::get();
+
+    info->tsc_timestamp = tsc_now;
+    info->system_time += (((tsc_now - tsc_pre) * tsc_mul) >> 32U);
+
+    info->version &= ~1ULL;
 }
 
 void
@@ -1434,31 +1483,13 @@ xen_op_handler::update_vcpu_time_info()
         return;
     }
 
-    auto &info = m_shared_info->vcpu_info[0].time;
+    // TODO: we will need to calculate the offset into
+    // vcpu_info once we support multiple vcpus per domain
+    update_time_info(&m_shared_info->vcpu_info[0].time);
 
-    // The xen.h comments suggest that we need to flip the version to prevent
-    // races, although its not clear what type of races could occur if this
-    // information is vCPU specific (since the vCPU that should be reading
-    // this is not active while the VMM is modifying the fields). Either way
-    // we do it.
-    //
-    // Note that we do our calculations using MHz and not kHz. The reason is
-    // even with a 64bit number, we run the risk of overflowing with kHz.
-    // The issue with using MHz is the CPU frequency is cut off, which could
-    // result in a small amount of drift, since the CPU frequency likely
-    // granularity extends to the kHz level.
-    //
-
-    info.version |= 1ULL;
-
-    const uint64_t tsc_mul = info.tsc_to_system_mul;
-    const uint64_t tsc_pre = info.tsc_timestamp;
-    const uint64_t tsc_now = ::x64::read_tsc::get();
-
-    info.tsc_timestamp = tsc_now;
-    info.system_time += (((tsc_now - tsc_pre) * tsc_mul) >> 32U);
-
-    info.version &= ~1ULL;
+    if (GSL_LIKELY(m_time_info)) {
+        update_time_info(m_time_info.get());
+    }
 }
 
 shared_info_t *
