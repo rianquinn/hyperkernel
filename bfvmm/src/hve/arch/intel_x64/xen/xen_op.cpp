@@ -235,7 +235,6 @@ xen_op_handler::xen_op_handler(
     vcpu->pass_through_io_accesses(0x3fd);
 
     ADD_EPT_WRITE_HANDLER(xapic_handle_write);
-    ADD_EPT_READ_HANDLER(debug_boot);
 }
 
 static uint64_t
@@ -464,34 +463,6 @@ xen_op_handler::xapic_handle_write_icr(uint64_t low)
             bfalert_nhex(0, "unsupported dest shorthand: ", dsh);
             break;
     }
-}
-
-bool
-xen_op_handler::debug_boot(
-    gsl::not_null<vcpu_t *> vcpu,
-    eapis::intel_x64::ept_violation_handler::info_t &info)
-{
-    try {
-        if (info.gpa >= 0x1000000 && info.gpa <= 0x1001000) {
-            const auto len = ::intel_x64::vmcs::vm_exit_instruction_length::get();
-            const auto rip = ::intel_x64::vmcs::guest_rip::get();
-
-            auto hkv = vcpu_cast(vcpu);
-            auto ump = hkv->map_gva_4k<uint8_t>(rip, len);
-            if (!ump) {
-                throw std::runtime_error("handle_xapic_write::map_gva_4k failed");
-            }
-
-            printf("insn bytes: ");
-            print_insn(ump.get(), len);
-            throw std::runtime_error("debug_boot error");
-        }
-    }
-    catchall({
-        vcpu->set_rax(FAILURE);
-    })
-
-    return false;
 }
 
 bool
@@ -1143,8 +1114,7 @@ xen_op_handler::XENVER_get_features_handler(
 // -----------------------------------------------------------------------------
 
 bool
-xen_op_handler::HYPERVISOR_vcpu_op(
-    gsl::not_null<vcpu *> vcpu)
+xen_op_handler::HYPERVISOR_vcpu_op(gsl::not_null<vcpu *> vcpu)
 {
     if (vcpu->rax() != __HYPERVISOR_vcpu_op) {
         return false;
@@ -1157,6 +1127,10 @@ xen_op_handler::HYPERVISOR_vcpu_op(
 
         case VCPUOP_register_vcpu_time_memory_area:
             this->VCPUOP_register_vcpu_time_memory_area_handler(vcpu);
+            return true;
+
+        case VCPUOP_register_runstate_memory_area:
+            this->VCPUOP_register_runstate_memory_area_handler(vcpu);
             return true;
 
         default:
@@ -1182,7 +1156,6 @@ xen_op_handler::VCPUOP_register_vcpu_time_memory_area_handler(
         expects(vcpu->rsi() == 0);
 
         auto arg = vcpu->map_arg<vcpu_register_time_memory_area_t>(vcpu->rdx());
-
         m_time_info = vcpu->map_arg<vcpu_time_info_t>(arg->addr.v);
 
         m_time_info->system_time = 0;
@@ -1190,6 +1163,24 @@ xen_op_handler::VCPUOP_register_vcpu_time_memory_area_handler(
         m_time_info->tsc_to_system_mul = (GHz << 32U) / (m_tsc_freq_khz * 1000U);
         m_time_info->tsc_shift = 0;
         m_time_info->tsc_timestamp = ::x64::read_tsc::get();
+
+        vcpu->set_rax(SUCCESS);
+    } catchall ({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
+void
+xen_op_handler::VCPUOP_register_runstate_memory_area_handler(
+    gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        expects(vcpu->rsi() == 0);
+        auto arg = vcpu->map_arg<vcpu_register_runstate_memory_area_t>(vcpu->rdx());
+
+        m_runstate_info = vcpu->map_arg<vcpu_runstate_info_t>(arg->addr.v);
+        m_runstate_info->state_entry_time = this->tsc_to_sys_time();
+        m_runstate_info->state = RUNSTATE_running;
 
         vcpu->set_rax(SUCCESS);
     } catchall ({
@@ -1415,6 +1406,20 @@ xen_op_handler::HVMOP_pagetable_dying_handler(
 // -----------------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------------
+
+uint64_t
+xen_op_handler::tsc_to_sys_time() const
+{
+    auto mul = m_shared_info->vcpu_info[0].time.tsc_to_system_mul;
+    return (::x64::read_tsc::get() * mul) >> 32U;
+}
+
+uint64_t
+xen_op_handler::tsc_to_sys_time(uint64_t tsc) const
+{
+    auto mul = m_shared_info->vcpu_info[0].time.tsc_to_system_mul;
+    return (tsc * mul) >> 32U;
+}
 
 void
 xen_op_handler::reset_vcpu_time_info()

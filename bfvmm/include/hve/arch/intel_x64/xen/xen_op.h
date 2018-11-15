@@ -24,6 +24,7 @@
 #include "../base.h"
 
 #include "public/xen.h"
+#include "public/vcpu.h"
 #include "public/arch-x86/cpuid.h"
 #include "evtchn_op.h"
 #include "sched_op.h"
@@ -172,6 +173,7 @@ private:
     bool HYPERVISOR_vcpu_op(gsl::not_null<vcpu *> vcpu);
     void VCPUOP_stop_periodic_timer_handler(gsl::not_null<vcpu *> vcpu);
     void VCPUOP_register_vcpu_time_memory_area_handler(gsl::not_null<vcpu *> vcpu);
+    void VCPUOP_register_runstate_memory_area_handler(gsl::not_null<vcpu *> vcpu);
 
     bool HYPERVISOR_hvm_op(gsl::not_null<vcpu *> vcpu);
     void HVMOP_set_param_handler(gsl::not_null<vcpu *> vcpu);
@@ -189,14 +191,6 @@ private:
     // Local APIC
     // -------------------------------------------------------------------------
 
-    //bool xapic_handle_read(
-    //    gsl::not_null<vcpu_t *> vcpu,
-    //    eapis::intel_x64::ept_violation_handler::info_t &info);
-
-    bool debug_boot(
-        gsl::not_null<vcpu_t *> vcpu,
-        eapis::intel_x64::ept_violation_handler::info_t &info);
-
     bool xapic_handle_write(
         gsl::not_null<vcpu_t *> vcpu,
         eapis::intel_x64::ept_violation_handler::info_t &info);
@@ -206,6 +200,9 @@ private:
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    uint64_t tsc_to_sys_time() const;
+    uint64_t tsc_to_sys_time(uint64_t tsc) const;
 
     void reset_vcpu_time_info();
     void update_vcpu_time_info();
@@ -234,6 +231,7 @@ private:
 
     uint64_t m_hypercall_page_gpa{};
 
+    eapis::x64::unique_map<vcpu_runstate_info_t> m_runstate_info;
     eapis::x64::unique_map<vcpu_time_info_t> m_time_info;
     eapis::x64::unique_map<shared_info_t> m_shared_info;
     eapis::x64::unique_map<uint8_t> m_console;
