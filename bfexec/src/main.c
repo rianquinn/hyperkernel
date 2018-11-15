@@ -158,27 +158,9 @@ domain_op__map_gpa(uint64_t gva, uint64_t gpa, uint64_t type)
 {
     status_t ret;
 
-    // TODO:
-    //
-    // We need to remove the use of mlock, and instead, a driver needs to
-    // allocate non-paged memory for the guest, otherwise, the OS could
-    // page the VM's memory out, which we cannot have, because the OS could
-    // end up using the memory for something else.
-    //
-
-    if (mlock((void *)gva, 0x1000) != 0) {
-        BFALERT("mlock failed: %s\n", strerror(errno));
-        return FAILURE;
-    }
-
     ret = __domain_op__map_gpa(g_vm.domainid, gva, gpa, type);
     if (ret != SUCCESS) {
         BFALERT("__domain_op__map_gpa failed\n");
-        return FAILURE;
-    }
-
-    if (munlock((void *)gva, 0x1000) != 0) {
-        BFALERT("munlock failed: %s\n", strerror(errno));
         return FAILURE;
     }
 
@@ -291,8 +273,6 @@ start_run_thread()
 /* -------------------------------------------------------------------------- */
 /* Memory Layout                                                              */
 /* -------------------------------------------------------------------------- */
-
-#define E820_MAP_SIZE 4
 
 /**
  *       0x0 +----------------------+ ---
@@ -659,7 +639,7 @@ setup_rm_trampoline()
         return FAILURE;
     }
 
-    ret = domain_op__map_buffer((uint64_t)g_reserved_8000, 0x8000, size, MAP_RW);
+    ret = domain_op__map_buffer((uint64_t)g_reserved_8000, 0x8000, size, MAP_RWE);
     if (ret != BF_SUCCESS) {
         BFALERT("__domain_op__map_buffer failed\n");
         return FAILURE;
@@ -762,92 +742,102 @@ main(int argc, const char *argv[])
         return EXIT_FAILURE;
     }
 
+    platform_init();
     set_affinity(0);
     setup_kill_signal_handler();
-    platform_init();
 
-    ret = domain_op__create_domain();
-    if (ret != SUCCESS) {
-        BFALERT("create_domain failed\n");
-        return EXIT_FAILURE;
+    char *addr = platform_alloc_rwe(0xF000000);
+    for (int i = 0; i < 0xF000000; i++) {
+        addr[i] = rand() % 256;
     }
 
-    ret = setup_e820_map();
-    if (ret != SUCCESS) {
-        BFALERT("setup_e820_map failed\n");
-        goto CLEANUP_VCPU;
+    for (int i = 0; i < 0x8; i++) {
+        printf("%02x", addr[rand() % 0xF000000]);
     }
+    printf("\n");
 
-    ret = binary_read(argv[1]);
-    if (ret != SUCCESS) {
-        BFALERT("read_binary failed\n");
-        goto CLEANUP_DOMAIN;
-    }
-
-    ret = binary_load();
-    if (ret != SUCCESS) {
-        BFALERT("load_binary failed\n");
-        goto CLEANUP_DOMAIN;
-    }
-
-    ret = vcpu_op__create_vcpu();
-    if (ret != SUCCESS) {
-        BFALERT("create_vcpu failed\n");
-        goto CLEANUP_DOMAIN;
-    }
-
-    ret = setup_xen_start_info();
-    if (ret != SUCCESS) {
-        BFALERT("setup_xen_start_info failed\n");
-        goto CLEANUP_VCPU;
-    }
-
-    ret = setup_xen_cmdline();
-    if (ret != SUCCESS) {
-        BFALERT("setup_xen_cmdline failed\n");
-        goto CLEANUP_VCPU;
-    }
-
-    ret = setup_xen_shared_info_page();
-    if (ret != SUCCESS) {
-        BFALERT("setup_xen_shared_info_page failed\n");
-        goto CLEANUP_VCPU;
-    }
-
-    ret = setup_xen_console();
-    if (ret != SUCCESS) {
-        BFALERT("setup_xen_console failed\n");
-        goto CLEANUP_VCPU;
-    }
-
-    ret = setup_rm_trampoline();
-    if (ret != SUCCESS) {
-        BFALERT("setup_rm_trampoline failed\n");
-        goto CLEANUP_VCPU;
-    }
-
-    ret = setup_xen_disabled();
-    if (ret != SUCCESS) {
-        BFALERT("setup_xen_disabled failed\n");
-        goto CLEANUP_VCPU;
-    }
-
-    start_run_thread();
-    pthread_join(g_vm.run_thread, 0);
-
-CLEANUP_VCPU:
-
-    ret = vcpu_op__destroy_vcpu();
-    if (ret != SUCCESS) {
-        BFALERT("destroy_vcpu failed\n");
-    }
-
-CLEANUP_DOMAIN:
-
-    ret = domain_op__destroy_domain();
-    if (ret != SUCCESS) {
-        BFALERT("destroy_domain failed\n");
-    }
+//    ret = domain_op__create_domain();
+//    if (ret != SUCCESS) {
+//        BFALERT("create_domain failed\n");
+//        return EXIT_FAILURE;
+//    }
+//
+//    ret = setup_e820_map();
+//    if (ret != SUCCESS) {
+//        BFALERT("setup_e820_map failed\n");
+//        goto CLEANUP_VCPU;
+//    }
+//
+//    ret = binary_read(argv[1]);
+//    if (ret != SUCCESS) {
+//        BFALERT("read_binary failed\n");
+//        goto CLEANUP_DOMAIN;
+//    }
+//
+//    ret = binary_load();
+//    if (ret != SUCCESS) {
+//        BFALERT("load_binary failed\n");
+//        goto CLEANUP_DOMAIN;
+//    }
+//
+//    ret = vcpu_op__create_vcpu();
+//    if (ret != SUCCESS) {
+//        BFALERT("create_vcpu failed\n");
+//        goto CLEANUP_DOMAIN;
+//    }
+//
+//    ret = setup_xen_start_info();
+//    if (ret != SUCCESS) {
+//        BFALERT("setup_xen_start_info failed\n");
+//        goto CLEANUP_VCPU;
+//    }
+//
+//    ret = setup_xen_cmdline();
+//    if (ret != SUCCESS) {
+//        BFALERT("setup_xen_cmdline failed\n");
+//        goto CLEANUP_VCPU;
+//    }
+//
+//    ret = setup_xen_shared_info_page();
+//    if (ret != SUCCESS) {
+//        BFALERT("setup_xen_shared_info_page failed\n");
+//        goto CLEANUP_VCPU;
+//    }
+//
+//    ret = setup_xen_console();
+//    if (ret != SUCCESS) {
+//        BFALERT("setup_xen_console failed\n");
+//        goto CLEANUP_VCPU;
+//    }
+//
+//    ret = setup_rm_trampoline();
+//    if (ret != SUCCESS) {
+//        BFALERT("setup_rm_trampoline failed\n");
+//        goto CLEANUP_VCPU;
+//    }
+//
+//    ret = setup_xen_disabled();
+//    if (ret != SUCCESS) {
+//        BFALERT("setup_xen_disabled failed\n");
+//        goto CLEANUP_VCPU;
+//    }
+//
+//    start_run_thread();
+//    pthread_join(g_vm.run_thread, 0);
+//
+//CLEANUP_VCPU:
+//
+//    ret = vcpu_op__destroy_vcpu();
+//    if (ret != SUCCESS) {
+//        BFALERT("destroy_vcpu failed\n");
+//    }
+//
+//CLEANUP_DOMAIN:
+//
+//    ret = domain_op__destroy_domain();
+//    if (ret != SUCCESS) {
+//        BFALERT("destroy_domain failed\n");
+//    }
 
     return EXIT_SUCCESS;
 }

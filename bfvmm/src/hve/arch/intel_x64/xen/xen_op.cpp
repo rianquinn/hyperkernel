@@ -673,7 +673,7 @@ xen_op_handler::ia32_apic_base_wrmsr_handler(
             break;
         default:
             bfalert_info(0, "Unhandled LAPIC state change");
-            dump(info.val);
+            dump(0, info.val);
             return false;
     }
 

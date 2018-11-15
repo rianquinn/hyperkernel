@@ -17,81 +17,46 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#define _GNU_SOURCE
+
 #include <errno.h>
-#include <fcntl.h>
+#include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 
-#include <bfdriverinterface.h>
-
-#ifndef MMAP_CAPACITY
-#define MMAP_CAPACITY 256
-#endif
-
-/* -------------------------------------------------------------------------- */
-/* Global data                                                                */
-/* -------------------------------------------------------------------------- */
-
-int g_hkd;
-int g_mmap_size;
-struct hkd_mmap *g_mmap[MMAP_CAPACITY];
+#define MMAP_FLAGS (MAP_POPULATE | MAP_LOCKED | MAP_PRIVATE | MAP_ANONYMOUS)
 
 /* -------------------------------------------------------------------------- */
 /* Internal helpers                                                           */
 /* -------------------------------------------------------------------------- */
 
-static struct hkd_mmap *mmap_alloc(uint64_t size, int prot)
+static void *mmap_alloc(uint64_t size, int prot, int flags)
 {
-    if (g_mmap_size >= MMAP_CAPACITY) {
+    void *addr = mmap(NULL, size, prot, flags, -1, 0);
+
+    if (addr == MAP_FAILED) {
+        printf("mmap failed: %s\n", strerror(errno));
         return NULL;
     }
 
-    struct hkd_mmap *mm = malloc(sizeof(struct hkd_mmap));
-    if (!mm) {
-        return NULL;
-    }
-
-    mm->size = size;
-    mm->prot = prot;
-    mm->flags = 0;
-
-    int ret = ioctl(g_hkd, IOCTL_MMAP, mm);
-    if (ret < 0) {
-        free(mm);
-        return NULL;
-    }
-
-    g_mmap[g_mmap_size++] = mm;
-    return mm;
+    return addr;
 }
 
-static void mmap_free(void *addr)
+static void mmap_free(void *addr, uint64_t len)
 {
     if (!addr) {
         return;
     }
 
-    for (int i = 0; i < g_mmap_size; i++) {
-        struct hkd_mmap *mm = g_mmap[i];
-
-        if (mm->addr != addr) {
-            continue;
-        }
-
-        ioctl(g_hkd, IOCTL_MUNMAP, mm);
-        free(mm);
-        g_mmap[i] = NULL;
-
-        for (int j = i + 1; j < g_mmap_size; j++) {
-            g_mmap[j - 1] = g_mmap[j];
-        }
-
-        g_mmap_size--;
+    if (munmap(addr, len) < 0) {
+        printf("munmap failed: %s\n", strerror(errno));
     }
 }
 
@@ -101,38 +66,73 @@ static void mmap_free(void *addr)
 
 int64_t platform_init(void)
 {
-    g_hkd = open("/dev/hkd", O_RDWR);
+    struct rlimit as, ml;
 
-    if (g_hkd == -1) {
-        printf("failed to open /dev/hkd: \n", strerror(errno));
-        return -ENODEV;
+    if (getrlimit(RLIMIT_AS, &as) < 0) {
+        printf("getrlimit (AS) failed: %s\n", strerror(errno));
+        return EXIT_FAILURE;
     }
 
-    g_mmap_size = 0;
-    return BF_SUCCESS;
+    ml.rlim_cur = as.rlim_cur;
+    ml.rlim_max = as.rlim_max;
+
+    if (setrlimit(RLIMIT_MEMLOCK, &ml) < 0) {
+        printf("setrlimit (MEMLOCK) failed: %s\n", strerror(errno));
+        return EXIT_FAILURE;
+    }
+
+    /**
+     * Sanity check
+     *
+     * We do this to make sure the limits were actually changed. The process
+     * needs to have super-user privileges for this to work.
+     */
+
+    if (getrlimit(RLIMIT_MEMLOCK, &ml) < 0) {
+        printf("getrlimit (MEMLOCK) failed: %s\n", strerror(errno));
+        return EXIT_FAILURE;
+    }
+
+    if (ml.rlim_cur != as.rlim_cur || ml.rlim_max != as.rlim_max) {
+        printf("MEMLOCK sanity check failed (be sure to run as root):\n");
+        printf("    memlock cur: %x max: %x\n", ml.rlim_cur, ml.rlim_max);
+        printf("    as      cur: %x max: %x\n", as.rlim_cur, as.rlim_max);
+        return EXIT_FAILURE;
+    }
+
+    printf("memlock cur: %x max: %x\n", ml.rlim_cur, ml.rlim_max);
+    printf("as      cur: %x max: %x\n", as.rlim_cur, as.rlim_max);
+
+    /**
+     * For simplicity, we ask the kernel to lock all future pages in memory.
+     * Every byte of memory allocated from this point forward will be locked
+     * into RAM. Obviously this could be a problem if we use alot of pages, in
+     * which case we will have to revisit this with a more elegant solution.
+     */
+
+    if (mlockall(MCL_FUTURE) < 0) {
+        printf("mlockall failed: %s\n", strerror(errno));
+        return EXIT_FAILURE;
+    }
+
+    return 0;
 }
 
 void *
 platform_alloc_rw(uint64_t len)
-{ return mmap_alloc(len, PROT_READ | PROT_WRITE); }
+{ return mmap_alloc(len, PROT_READ | PROT_WRITE, MMAP_FLAGS); }
 
 void *
 platform_alloc_rwe(uint64_t len)
-{ return mmap_alloc(len, PROT_READ | PROT_WRITE | PROT_EXEC); }
+{ return mmap_alloc(len, PROT_READ | PROT_WRITE | PROT_EXEC, MMAP_FLAGS); }
 
 void
 platform_free_rw(void *addr, uint64_t len)
-{
-    bfignored(len);
-    mmap_free(addr);
-}
+{ mmap_free(addr, len); }
 
 void
 platform_free_rwe(void *addr, uint64_t len)
-{
-    bfignored(len);
-    mmap_free(addr);
-}
+{ mmap_free(addr, len); }
 
 void *
 platform_memset(void *ptr, char value, uint64_t num)
