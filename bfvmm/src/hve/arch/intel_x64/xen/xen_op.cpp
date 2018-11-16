@@ -1249,6 +1249,10 @@ xen_op_handler::HYPERVISOR_event_channel_op(gsl::not_null<vcpu *> vcpu)
             this->EVTCHNOP_expand_array_handler(vcpu);
             return true;
 
+        case EVTCHNOP_set_priority:
+            this->EVTCHNOP_set_priority_handler(vcpu);
+            return true;
+
         default:
             break;
     };
@@ -1285,12 +1289,24 @@ xen_op_handler::EVTCHNOP_init_control_handler(
 }
 
 void
-xen_op_handler::EVTCHNOP_expand_array_handler(
-    gsl::not_null<vcpu *> vcpu)
+xen_op_handler::EVTCHNOP_expand_array_handler(gsl::not_null<vcpu *> vcpu)
 {
     try {
         auto arg = vcpu->map_arg<evtchn_expand_array_t>(vcpu->rsi());
         m_evtchn_op->expand_array(arg.get());
+        vcpu->set_rax(SUCCESS);
+    }
+    catchall({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
+void
+xen_op_handler::EVTCHNOP_set_priority_handler(gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        auto arg = vcpu->map_arg<evtchn_set_priority_t>(vcpu->rsi());
+        m_evtchn_op->set_priority(arg.get());
         vcpu->set_rax(SUCCESS);
     }
     catchall({

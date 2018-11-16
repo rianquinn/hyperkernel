@@ -116,6 +116,10 @@ public:
     ///
     void expand_array(gsl::not_null<evtchn_expand_array_t *> arr);
 
+    /// Set priority
+    ///
+    void set_priority(const gsl::not_null<evtchn_set_priority_t *> pri);
+
 private:
 
     void bind_virq_timer(gsl::not_null<evtchn_bind_virq_t *> bind);

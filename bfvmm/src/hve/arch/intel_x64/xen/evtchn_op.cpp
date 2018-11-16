@@ -111,6 +111,17 @@ void
 evtchn_op::expand_array(gsl::not_null<evtchn_expand_array_t *> arr)
 { this->make_word_page(arr); }
 
+void
+evtchn_op::set_priority(const gsl::not_null<evtchn_set_priority_t *> pri)
+{
+    expects(pri->priority < m_queues.size());
+
+    auto chan = this->port_to_chan(pri->port);
+    expects(chan != nullptr);
+
+    chan->set_priority(pri->priority);
+}
+
 // =============================================================================
 // Initialization
 // =============================================================================

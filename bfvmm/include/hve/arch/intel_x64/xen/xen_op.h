@@ -184,6 +184,7 @@ private:
     void EVTCHNOP_bind_virq_handler(gsl::not_null<vcpu *> vcpu);
     void EVTCHNOP_init_control_handler(gsl::not_null<vcpu *> vcpu);
     void EVTCHNOP_expand_array_handler(gsl::not_null<vcpu *> vcpu);
+    void EVTCHNOP_set_priority_handler(gsl::not_null<vcpu *> vcpu);
 
     bool HYPERVISOR_sched_op(gsl::not_null<vcpu *> vcpu);
     void SCHEDOP_yield_handler(gsl::not_null<vcpu *> vcpu);
