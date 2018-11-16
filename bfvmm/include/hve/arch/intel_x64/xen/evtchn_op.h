@@ -55,28 +55,29 @@ namespace hyperkernel::intel_x64
 class vcpu;
 class xen_op_handler;
 
-struct evtchn_fifo_queue {
-    uint32_t *head;
-    uint32_t tail;
-    uint8_t priority;
-    std::mutex lock;
-};
-
 class EXPORT_HYPERKERNEL_HVE evtchn_op
 {
 public:
 
-    /// A "port" is the address of an event word and
-    /// the address of an evtchn
     using port_t = evtchn_port_t;
     using word_t = std::atomic<event_word_t>;
     using chan_t = class evtchn;
-    using queue_t = struct evtchn_fifo_queue;
-    using bucket_t = page_ptr<chan_t>;
 
-    static_assert(is_power_of_two(sizeof(word_t)));
-    static_assert(is_power_of_two(sizeof(chan_t)));
-    static_assert(is_power_of_two(sizeof(bucket_t)));
+    using queue_t = struct fifo_queue {
+        port_t *head;
+        port_t tail;
+        uint8_t priority;
+
+        // No locking needed yet
+        // std::mutex lock;
+    };
+
+    static_assert(is_power_of_2(EVTCHN_FIFO_NR_CHANNELS));
+    static_assert(is_power_of_2(sizeof(word_t)));
+    static_assert(is_power_of_2(sizeof(chan_t)));
+
+    static_assert(::x64::pt::page_size > sizeof(chan_t));
+    static_assert(sizeof(chan_t) > sizeof(word_t));
 
     /// Constructor
     ///
@@ -101,79 +102,117 @@ public:
     ///
     void init_control(gsl::not_null<evtchn_init_control_t *> ctl);
 
-    /// Send
-    ///
-    void send(gsl::not_null<evtchn_send_t *> send);
-
     /// Set callback via
     ///
     /// Set the vector used to inject events into the guest
     ///
     void set_callback_via(uint64_t via);
 
+    /// Bind virq
+    ///
+    void bind_virq(gsl::not_null<evtchn_bind_virq_t *> bind);
+
+    /// Expand array
+    ///
+    void expand_array(gsl::not_null<evtchn_expand_array_t *> arr);
+
 private:
 
-    // Static members
-    //
-    // We distinguish between channel capacity and the
-    // current channel size in exactly the same way std::vector does.
+    void bind_virq_timer(gsl::not_null<evtchn_bind_virq_t *> bind);
+
+    // Static constants
     //
     static constexpr auto bits_per_xen_ulong = sizeof(xen_ulong_t) * 8;
-    static constexpr auto chan_capacity = EVTCHN_FIFO_NR_CHANNELS;
-    static constexpr auto word_per_page = ::x64::pt::page_size / sizeof(word_t);
-    static constexpr auto event_word_capacity = chan_capacity / word_per_page;
+    static constexpr auto max_channels = EVTCHN_FIFO_NR_CHANNELS;
 
-    // Each evtchn must be aligned to evtchn_size for this to be right
-    static constexpr auto bucket_per_group = ::x64::pt::page_size / sizeof(bucket_t);
-    static constexpr auto chan_per_bucket = ::x64::pt::page_size / evtchn_size;
-    static constexpr auto chan_per_group = chan_per_bucket * bucket_per_group;
-    static constexpr auto event_group_capacity = chan_capacity / chan_per_group;
+    static constexpr auto words_per_page = ::x64::pt::page_size / sizeof(word_t);
+    static constexpr auto chans_per_page = ::x64::pt::page_size / sizeof(chan_t);
+    static constexpr auto max_word_pages = max_channels / words_per_page;
+    static constexpr auto max_chan_pages = max_channels / chans_per_page;
 
+    static constexpr auto port_mask = max_channels - 1U;
+    static constexpr auto word_mask = words_per_page - 1U;
+    static constexpr auto chan_mask = chans_per_page - 1U;
+
+    static constexpr auto word_page_mask = port_mask & ~word_mask;
+    static constexpr auto chan_page_mask = port_mask & ~chan_mask;
+
+    static constexpr auto word_page_shift = log2(words_per_page);
+    static constexpr auto chan_page_shift = log2(chans_per_page);
+
+    static constexpr auto null_port = 0;
+
+    // Ports
     //
-    // Member functions
-    //
-    evtchn_port_t make_new_port();
-    int make_port(evtchn_port_t port);
-    void make_bucket(evtchn_port_t port);
-
-    void setup_ports();
-    void setup_control_block();
-    void map_control_block(uint64_t gfn, uint32_t offset);
-
     chan_t *port_to_chan(port_t port) const;
     word_t *port_to_word(port_t port) const;
 
-    uint64_t chan_count() const;
+    uint64_t port_to_chan_page(port_t port) const;
+    uint64_t port_to_word_page(port_t port) const;
 
-    bool port_is_valid(port_t port) const;
-    bool port_is_pending(port_t port) const;
-    bool port_is_masked(port_t port) const;
-    bool port_is_linked(port_t port) const;
-    bool port_is_busy(port_t port) const;
+    port_t make_new_port();
+    int make_port(port_t port);
+    void setup_ports();
+    void setup_control_block(uint64_t gfn, uint32_t offset);
 
-    void port_set_pending(port_t port);
-    void port_set_masked(port_t port);
-    void port_set_linked(port_t port);
-    void port_set_busy(port_t port);
+    void make_chan_page(port_t port);
+    void make_word_page(gsl::not_null<evtchn_expand_array_t *> expand);
 
-    void port_clear_pending(port_t port);
-    void port_clear_masked(port_t port);
-    void port_clear_linked(port_t port);
-    void port_clear_busy(port_t port);
+    // Links
+    //
+    int try_set_link(word_t *word, event_word_t *ew, port_t port);
+    bool set_link(word_t *word, port_t port);
+    void set_pending(chan_t *chan);
+
+    // Interface for atomic accesses to shared memory
+    //
+    bool word_is_busy(word_t *word) const;
+    bool word_is_linked(word_t *word) const;
+    bool word_is_masked(word_t *word) const;
+    bool word_is_pending(word_t *word) const;
+
+    void word_set_pending(word_t *word);
+    bool word_test_and_set_pending(word_t *word);
+
+    void word_clear_pending(word_t *word);
+    bool word_test_and_clear_pending(word_t *word);
+
+    void word_set_busy(word_t *word);
+    bool word_test_and_set_busy(word_t *word);
+
+    void word_clear_busy(word_t *word);
+    bool word_test_and_clear_busy(word_t *word);
+
+    void word_set_masked(word_t *word);
+    bool word_test_and_set_masked(word_t *word);
+
+    void word_clear_masked(word_t *word);
+    bool word_test_and_clear_masked(word_t *word);
+
+    void word_set_linked(word_t *word);
+    bool word_test_and_set_linked(word_t *word);
+
+    void word_clear_linked(word_t *word);
+    bool word_test_and_clear_linked(word_t *word);
 
     // Data members
-    volatile std::atomic<uint64_t> m_valid_chans{};
+    //
+    uint64_t m_allocated_chans{};
+    uint64_t m_allocated_words{};
 
     evtchn_fifo_control_block_t *m_ctl_blk{};
     eapis::x64::unique_map<uint8_t> m_ctl_blk_ump{};
+
     std::array<queue_t, EVTCHN_FIFO_MAX_QUEUES> m_queues{};
+    std::array<port_t, NR_VIRQS> m_virq_to_port;
 
-    std::vector<page_ptr<word_t>> m_event_word{};
-    std::vector<page_ptr<chan_t>> m_event_group{};
+    std::vector<eapis::x64::unique_map<word_t>> m_event_words{};
+    std::vector<page_ptr<chan_t>> m_event_chans{};
 
-    vcpu *m_vcpu;
-    xen_op_handler *m_xen_op;
-    uint64_t m_cb_via;
+    vcpu *m_vcpu{};
+    xen_op_handler *m_xen_op{};
+    uint64_t m_cb_via{};
+    port_t m_port_end{1};
 
 public:
 

@@ -1230,20 +1230,23 @@ xen_op_handler::SCHEDOP_yield_handler(gsl::not_null<vcpu *> vcpu)
 // -----------------------------------------------------------------------------
 
 bool
-xen_op_handler::HYPERVISOR_event_channel_op(
-    gsl::not_null<vcpu *> vcpu)
+xen_op_handler::HYPERVISOR_event_channel_op(gsl::not_null<vcpu *> vcpu)
 {
     if (vcpu->rax() != __HYPERVISOR_event_channel_op) {
         return false;
     }
 
     switch (vcpu->rdi()) {
+        case EVTCHNOP_bind_virq:
+            this->EVTCHNOP_bind_virq_handler(vcpu);
+            return true;
+
         case EVTCHNOP_init_control:
             this->EVTCHNOP_init_control_handler(vcpu);
             return true;
 
-        case EVTCHNOP_send:
-            this->EVTCHNOP_send_handler(vcpu);
+        case EVTCHNOP_expand_array:
+            this->EVTCHNOP_expand_array_handler(vcpu);
             return true;
 
         default:
@@ -1252,6 +1255,19 @@ xen_op_handler::HYPERVISOR_event_channel_op(
 
     throw std::runtime_error("unknown HYPERVISOR_event_channel_op: " +
                              std::to_string(vcpu->rdi()));
+}
+
+void
+xen_op_handler::EVTCHNOP_bind_virq_handler(gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        auto arg = vcpu->map_arg<evtchn_bind_virq_t>(vcpu->rsi());
+        m_evtchn_op->bind_virq(arg.get());
+        vcpu->set_rax(SUCCESS);
+    }
+    catchall ({
+        vcpu->set_rax(FAILURE);
+    })
 }
 
 void
@@ -1269,13 +1285,13 @@ xen_op_handler::EVTCHNOP_init_control_handler(
 }
 
 void
-xen_op_handler::EVTCHNOP_send_handler(
+xen_op_handler::EVTCHNOP_expand_array_handler(
     gsl::not_null<vcpu *> vcpu)
 {
     try {
-        auto arg = vcpu->map_arg<evtchn_send_t>(vcpu->rsi());
-        m_evtchn_op->send(arg.get());
-        vcpu->set_rax(FAILURE);
+        auto arg = vcpu->map_arg<evtchn_expand_array_t>(vcpu->rsi());
+        m_evtchn_op->expand_array(arg.get());
+        vcpu->set_rax(SUCCESS);
     }
     catchall({
         vcpu->set_rax(FAILURE);

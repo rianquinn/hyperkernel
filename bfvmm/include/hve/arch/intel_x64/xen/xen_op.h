@@ -181,8 +181,9 @@ private:
     void HVMOP_pagetable_dying_handler(gsl::not_null<vcpu *> vcpu);
 
     bool HYPERVISOR_event_channel_op(gsl::not_null<vcpu *> vcpu);
+    void EVTCHNOP_bind_virq_handler(gsl::not_null<vcpu *> vcpu);
     void EVTCHNOP_init_control_handler(gsl::not_null<vcpu *> vcpu);
-    void EVTCHNOP_send_handler(gsl::not_null<vcpu *> vcpu);
+    void EVTCHNOP_expand_array_handler(gsl::not_null<vcpu *> vcpu);
 
     bool HYPERVISOR_sched_op(gsl::not_null<vcpu *> vcpu);
     void SCHEDOP_yield_handler(gsl::not_null<vcpu *> vcpu);
@@ -203,7 +204,6 @@ private:
 
     uint64_t tsc_to_sys_time() const;
     uint64_t tsc_to_sys_time(uint64_t tsc) const;
-
     void reset_vcpu_time_info();
     void update_vcpu_time_info();
 

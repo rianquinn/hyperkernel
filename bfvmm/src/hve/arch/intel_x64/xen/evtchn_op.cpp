@@ -60,25 +60,8 @@ evtchn_op::evtchn_op(
     m_vcpu{vcpu},
     m_xen_op{handler}
 {
-    m_event_word.reserve(event_word_capacity);
-    m_event_group.reserve(event_group_capacity);
-
-    this->make_bucket(0);
-    auto chan = this->port_to_chan(0);
-    chan->set_state(evtchn::reserved);
-
-//    bfn::call_once(g_flag, [&]() {
-//        bfdebug_nhex(0, "chan_capacity", chan_capacity);
-//        bfdebug_ndec(0, "word_per_page", word_per_page);
-//        bfdebug_ndec(0, "event_word_capacity", event_word_capacity);
-//
-//        bfdebug_ndec(0, "bucket_per_group", bucket_per_group);
-//        bfdebug_ndec(0, "chan_per_bucket", chan_per_bucket);
-//        bfdebug_ndec(0, "chan_per_group", chan_per_group);
-//        bfdebug_ndec(0, "event_group_capacity", event_group_capacity);
-//
-//        bfdebug_ndec(0, "evtchn_size", evtchn_size);
-//    });
+    m_event_words.reserve(max_word_pages);
+    m_event_chans.reserve(max_chan_pages);
 }
 
 void
@@ -86,120 +69,12 @@ evtchn_op::init_control(gsl::not_null<evtchn_init_control_t *> ctl)
 {
     expects(ctl->vcpu == m_vcpu->lapicid());
     expects(ctl->offset <= (0x1000 - sizeof(evtchn_fifo_control_block_t)));
-    expects(bfn::lower(ctl->offset, 3) == 0);
+    expects((ctl->offset & 0x7) == 0);
+
+    this->setup_control_block(ctl->control_gfn, ctl->offset);
+    this->setup_ports();
 
     ctl->link_bits = EVTCHN_FIFO_LINK_BITS;
-
-    this->setup_control_block();
-    this->map_control_block(ctl->control_gfn, ctl->offset);
-    this->setup_ports();
-}
-
-void
-evtchn_op::send(gsl::not_null<evtchn_send_t *> send)
-{
-    auto port = send->port;
-
-    if (!this->port_is_valid(port)) {
-        throw std::invalid_argument("send: invalid port: " +
-                                    std::to_string(port));
-    }
-}
-
-// =============================================================================
-// Private bits
-// =============================================================================
-
-evtchn_port_t
-evtchn_op::make_new_port()
-{
-    for (evtchn_port_t p = 1; p < chan_capacity; p++) {
-        if (this->make_port(p) == -EBUSY) {
-            continue;
-        }
-        return p;
-    }
-
-    return 0;
-}
-
-int
-evtchn_op::make_port(evtchn_port_t port)
-{
-    if (port >= chan_capacity) {
-        throw std::invalid_argument("make_port: invalid_port: " +
-                                    std::to_string(port));
-    }
-
-    if (this->port_is_valid(port)) {
-        auto chan = this->port_to_chan(port);
-        if (chan->state() != evtchn::free) {
-            return -EBUSY;
-        }
-
-        if (this->port_is_busy(port)) {
-            return -EBUSY;
-        }
-
-        return 0;
-    }
-
-    auto group = port / chan_per_group;
-    if (group == m_event_group.size()) {
-        this->make_bucket(port);
-    }
-
-    return 0;
-}
-
-void
-evtchn_op::make_bucket(evtchn_port_t port)
-{
-    const auto cur = m_event_group.size();
-    const auto cap = m_event_group.capacity();
-
-    if (GSL_UNLIKELY(cur == cap)) {
-        throw std::runtime_error("evtchn_op: out of buckets");
-    }
-
-    auto bucket = make_page<chan_t>();
-    auto base = bucket.get();
-    uint8_t *page = reinterpret_cast<uint8_t *>(bucket.get());
-    memset(page, 0, ::x64::pt::page_size);
-
-    for (auto i = 0; i < chan_per_bucket; i++) {
-        auto chan = &base[i];
-        chan->set_port(port + i);
-        chan->set_priority(EVTCHN_FIFO_PRIORITY_DEFAULT);
-    }
-
-    m_event_group.push_back(std::move(bucket));
-    m_valid_chans += chan_per_bucket;
-}
-
-void
-evtchn_op::setup_ports()
-{
-    for (auto p = 1; p < chan_capacity; p++) {
-        if (!this->port_is_valid(p)) {
-            break;
-        }
-
-        auto arr = m_xen_op->shared_info()->evtchn_pending;
-        auto idx = p / bits_per_xen_ulong;
-        auto bit = p % bits_per_xen_ulong;
-        auto val = arr[idx];
-
-        if (is_bit_set(bit, val)) {
-            auto chan = this->port_to_chan(p);
-            chan->set_pending();
-        }
-    }
-
-    auto &info = m_xen_op->shared_info()->vcpu_info[0];
-
-    info.evtchn_upcall_pending = 1;
-    info.evtchn_pending_sel = 0xFFFFFFFFFFFFFFFFULL;
 }
 
 void
@@ -208,153 +83,491 @@ evtchn_op::set_callback_via(uint64_t via)
     expects(m_xen_op->shared_info());
 
     // At this point, the guest has initialized the evtchn
-    // control structures and has given us the vector to inject
-    // whenever an upcall is pending.
+    // control structures and has just given us the vector
+    // to inject whenever an upcall is pending.
     //
     m_cb_via = via;
     m_vcpu->queue_external_interrupt(via);
 }
 
 void
-evtchn_op::setup_control_block()
+evtchn_op::bind_virq(gsl::not_null<evtchn_bind_virq_t *> bind)
 {
-    for (auto i = 0; i <= EVTCHN_FIFO_PRIORITY_MIN; i++) {
-        m_queues[i].priority = i;
+    expects(bind->vcpu == 0);
+    expects(m_virq_to_port.at(bind->virq) == null_port);
+
+    switch (bind->virq) {
+        case VIRQ_TIMER:
+            this->bind_virq_timer(bind);
+            break;
+
+        default:
+            throw std::runtime_error("unhandled bind VIRQ: " +
+                                     std::to_string(bind->virq));
     }
 }
 
 void
-evtchn_op::map_control_block(uint64_t gfn, uint32_t offset)
+evtchn_op::expand_array(gsl::not_null<evtchn_expand_array_t *> arr)
+{ this->make_word_page(arr); }
+
+// =============================================================================
+// Initialization
+// =============================================================================
+
+void
+evtchn_op::setup_control_block(uint64_t gfn, uint32_t offset)
 {
     const auto gpa = gfn << ::x64::pt::page_shift;
     m_ctl_blk_ump = m_vcpu->map_gpa_4k<uint8_t>(gpa);
-
-    if (!m_ctl_blk_ump) {
-        throw std::runtime_error("map_gpa_4k failed");
-    }
 
     uint8_t *base = m_ctl_blk_ump.get() + offset;
     m_ctl_blk = reinterpret_cast<evtchn_fifo_control_block_t *>(base);
 
     for (auto i = 0; i <= EVTCHN_FIFO_PRIORITY_MIN; i++) {
+        m_queues[i].priority = i;
         m_queues[i].head = &m_ctl_blk->head[i];
     }
+}
+
+void
+evtchn_op::setup_ports()
+{
+    expects(m_event_words.size() == 0);
+    expects(m_event_chans.size() == 0);
+    expects(m_allocated_words == 0);
+    expects(m_allocated_chans == 0);
+
+    this->make_chan_page(null_port);
+    this->port_to_chan(null_port)->set_state(evtchn::state_reserved);
+
+    for (auto p = 1; p < chans_per_page; p++) {
+        auto arr = m_xen_op->shared_info()->evtchn_pending;
+        auto idx = p / bits_per_xen_ulong;
+        auto bit = p % bits_per_xen_ulong;
+        auto val = arr[idx];
+
+        if (is_bit_set(bit, val)) {
+            this->port_to_chan(p)->set_pending();
+        }
+    }
+
+    auto info = &m_xen_op->shared_info()->vcpu_info[0];
+
+    info->evtchn_upcall_pending = 1ULL;
+    info->evtchn_pending_sel = ~0ULL;
+}
+
+void
+evtchn_op::bind_virq_timer(gsl::not_null<evtchn_bind_virq_t *> bind)
+{
+    const auto virq = bind->virq;
+    const auto vcpu = bind->vcpu;
+    const auto port = this->make_new_port();
+
+    auto chan = this->port_to_chan(port);
+
+    chan->set_port(port);
+    chan->set_state(evtchn::state_virq);
+    chan->set_vcpuid(bind->vcpu);
+    chan->set_virq(bind->virq);
+
+    m_virq_to_port[virq] = port;
+    bind->port = port;
+}
+
+int
+evtchn_op::try_set_link(word_t *word, event_word_t *ew, port_t port)
+{
+    auto &expect = *ew;
+    if (is_bit_cleared(expect, EVTCHN_FIFO_LINKED)) {
+        return 0;
+    }
+
+    auto desire = (expect & ~((1 << EVTCHN_FIFO_BUSY) | port_mask)) | port;
+    return word->compare_exchange_strong(expect, desire) ? 1 : -EAGAIN;
+}
+
+
+/*
+ * See xen/xen/common/event_fifo.c for reference
+ *
+ * Atomically set the LINK field iff it is still LINKED.
+ *
+ * The guest is only permitted to make the following changes to a
+ * LINKED event.
+ *
+ * - set MASKED
+ * - clear MASKED
+ * - clear PENDING
+ * - clear LINKED (and LINK)
+ *
+ * We block unmasking by the guest by marking the tail word as BUSY,
+ * therefore, the cmpxchg() may fail at most 4 times.
+ */
+bool
+evtchn_op::set_link(word_t *word, port_t port)
+{
+    auto w = word->load();
+    int ret = this->try_set_link(word, &w, port);
+
+    if (ret >= 0) {
+        return ret;
+    }
+
+    /*
+     * Try again, this time after marking the word
+     * busy to prevent guest unmasking.
+     */
+    this->word_set_busy(word);
+    w = word->load();
+
+    for (int i = 0; i < 4; i++) {
+        ret = this->try_set_link(word, &w, port);
+        if (ret >= 0) {
+            if (ret == 0) {
+                this->word_clear_busy(word);
+            }
+            return ret;
+        }
+    }
+
+    bfalert_nhex(0, "Failed to link port:", port);
+    this->word_clear_busy(word);
+
+    return 0;
+
+    //TODO:
+    // Xen returns 1 here which 't violates the iff above...
+    // It seems like we should return 0 here
+    //
+    // return 1;
+}
+
+void
+evtchn_op::set_pending(chan_t *chan)
+{
+    expects(m_ctl_blk);
+
+    const auto port = chan->port();
+    auto word = this->port_to_word(port);
+    if (!word) {
+
+        // The guest hasn't added the corresponding
+        // event array, so we set pending for later
+        //
+        chan->set_pending();
+        return;
+    }
+
+    const auto was_pending = this->word_is_pending(word);
+    if (this->word_is_masked(word) || this->word_is_linked(word)) {
+        return;
+    }
+
+    if (this->word_test_and_set_linked(word)) {
+        //goto done;
+        return;
+    }
+
+    auto next = &m_queues.at(chan->priority());
+    auto prev = &m_queues.at(chan->prev_priority());
+
+    if (prev->tail == port) {
+        prev->tail = null_port;
+    }
+
+    if (next != prev) {
+        chan->set_prev_vcpuid(chan->vcpuid());
+        chan->set_prev_priority(chan->priority());
+    }
+
+    bool linked = false;
+    if (next->tail != null_port) {
+        auto tail_word = this->port_to_word(next->tail);
+        linked = this->set_link(tail_word, port);
+    }
+
+    if (!linked) {
+        //TODO: atomic?
+        *next->head = port;
+    }
+
+    next->tail = port;
+    auto bit = 1UL << next->priority;
+
+    //TODO: atomic?
+    auto wasnt_ready = (m_ctl_blk->ready & bit) == 0;
+
+    if (!linked && wasnt_ready) {
+        auto &info = m_xen_op->shared_info()->vcpu_info[0];
+        if (info.evtchn_upcall_pending) {
+            return;
+        }
+        info.evtchn_upcall_pending |= 1;
+        m_vcpu->queue_external_interrupt(m_cb_via);
+    }
+
+//done:
+//    if (!was_pending) {
+//        this->check_pollers(port);
+//    }
+}
+
+// Ports
+//
+// A port is an address to two things: a chan_t and a word_t
+// Ports use a two-level addressing scheme.
+//
+
+evtchn_op::port_t
+evtchn_op::make_new_port()
+{
+    for (port_t p = m_port_end; p < max_channels; p++) {
+        if (this->make_port(p) == -EBUSY) {
+            continue;
+        }
+
+        m_port_end = p + 1U;
+        return p;
+    }
+
+    return null_port;
 }
 
 evtchn_op::chan_t *
 evtchn_op::port_to_chan(port_t port) const
 {
-    auto grp_idx = port / chan_per_group;
-    auto bkt_idx = port % chan_per_group / chan_per_bucket;
-    auto bkt_ptr = m_event_group.at(grp_idx).get();
+    const auto size = m_event_chans.size();
+    const auto page = (port & chan_page_mask) >> chan_page_shift;
 
-    if (bkt_idx >= chan_per_bucket) {
-        throw std::invalid_argument("port_to_chan: port out of range: " +
-                                    std::to_string(port));
+    if (page >= size) {
+        return nullptr;
     }
 
-    auto chan = &bkt_ptr[bkt_idx];
-
-    //bfdebug_nhex(0, "port_to_chan: ", port);
-    //bfdebug_subnhex(0, "state: ", chan->state());
-    //bfdebug_subbool(0, "pending: ", chan->is_pending());
-    //bfdebug_subnhex(0, "priority: ", chan->priority());
-    //bfdebug_subnhex(0, "port: ", chan->port());
-
-    return chan;
+    auto chan = m_event_chans[page].get();
+    return &chan[port & chan_mask];
 }
 
+// Note:
+//
+// Word arrays are shared between the guest and host. The guest adds a new
+// word array with the EVTCHNOP_expand_array hypercall, so it is possible
+// that a given port doesn't map to an existing event word.
+//
 evtchn_op::word_t *
 evtchn_op::port_to_word(port_t port) const
 {
-    auto page_idx = port / word_per_page;
-    auto word_idx = port % word_per_page;
-    auto page_ptr = m_event_word.at(page_idx).get();
+    const auto size = m_event_words.size();
+    const auto page = (port & word_page_mask) >> word_page_shift;
 
-    if (word_idx >= word_per_page) {
-        throw std::invalid_argument("port_to_word: port out of range: " +
+    if (page >= size) {
+        return nullptr;
+    }
+
+    auto word = m_event_words[page].get();
+    return &word[port & word_mask];
+}
+
+int
+evtchn_op::make_port(port_t port)
+{
+    if (port >= max_channels) {
+        throw std::invalid_argument("make_port: port out of range" +
                                     std::to_string(port));
     }
 
-    return &page_ptr[word_idx];
+    if (const auto chan = this->port_to_chan(port); chan) {
+        if (chan->state() != evtchn::state_free) {
+            return -EBUSY;
+        }
+
+        auto word = this->port_to_word(port);
+        if (word && this->word_is_busy(word)) {
+            return -EBUSY;
+        }
+        return 0;
+    }
+
+    this->make_chan_page(port);
+    return 0;
 }
 
-uint64_t
-evtchn_op::chan_count() const
-{ return m_valid_chans.load(); }
-
-bool evtchn_op::port_is_valid(port_t port) const
-{ return port < chan_count(); }
-
-bool evtchn_op::port_is_pending(port_t port) const
+void
+evtchn_op::make_chan_page(port_t port)
 {
-    auto word = this->port_to_word(port);
+    const auto indx = (port & chan_page_mask) >> chan_page_shift;
+    const auto size = m_event_chans.size();
+    const auto cpty = m_event_chans.capacity();
+
+    expects(size == indx);
+    expects(size < cpty);
+
+    auto page = make_page<chan_t>();
+
+    for (auto i = 0; i < chans_per_page; i++) {
+        auto chan = &page.get()[i];
+
+        chan->set_state(evtchn::state_free);
+        chan->set_priority(EVTCHN_FIFO_PRIORITY_DEFAULT);
+        chan->set_prev_priority(EVTCHN_FIFO_PRIORITY_DEFAULT);
+
+        //TODO: Need to use ID the guest
+        // passes in to bind_virq
+        chan->set_vcpuid(0);
+
+        chan->set_prev_vcpuid(0);
+        chan->set_port(port + i);
+        chan->clear_pending();
+    }
+
+    m_event_chans.push_back(std::move(page));
+    m_allocated_chans += chans_per_page;
+}
+
+void
+evtchn_op::make_word_page(gsl::not_null<evtchn_expand_array_t *> expand)
+{
+    expects(m_event_words.size() < m_event_words.capacity());
+
+    auto prev = m_allocated_words;
+    auto addr = expand->array_gfn << ::x64::pt::page_shift;
+    auto page = m_vcpu->map_gpa_4k<word_t>(addr);
+
+    m_event_words.push_back(std::move(page));
+    m_allocated_words += words_per_page;
+
+    for (auto p = prev; p < m_allocated_words; p++) {
+        auto chan = this->port_to_chan(p);
+        if (!chan || !chan->is_pending()) {
+            continue;
+        }
+        this->set_pending(chan);
+    }
+}
+
+bool evtchn_op::word_is_pending(word_t *word) const
+{
     return is_bit_set(word->load(), EVTCHN_FIFO_PENDING);
 }
 
-bool evtchn_op::port_is_masked(port_t port) const
+bool evtchn_op::word_is_masked(word_t *word) const
 {
-    auto word = this->port_to_word(port);
-    return is_bit_set(word->load(), EVTCHN_FIFO_MASKED); }
+    return is_bit_set(word->load(), EVTCHN_FIFO_MASKED);
+}
 
-bool evtchn_op::port_is_linked(port_t port) const
+bool evtchn_op::word_is_linked(word_t *word) const
 {
-    auto word = this->port_to_word(port);
     return is_bit_set(word->load(), EVTCHN_FIFO_LINKED);
 }
 
-bool evtchn_op::port_is_busy(port_t port) const
+bool evtchn_op::word_is_busy(word_t *word) const
 {
-    auto word = this->port_to_word(port);
     return is_bit_set(word->load(), EVTCHN_FIFO_BUSY);
 }
 
-void evtchn_op::port_set_pending(port_t port)
+void evtchn_op::word_set_pending(word_t *word)
 {
-    auto word = this->port_to_word(port);
     word->fetch_or(1U << EVTCHN_FIFO_PENDING);
 }
 
-void evtchn_op::port_set_masked(port_t port)
+bool evtchn_op::word_test_and_set_pending(word_t *word)
 {
-    auto word = this->port_to_word(port);
-    word->fetch_or(1U << EVTCHN_FIFO_MASKED);
+    const auto mask = 1U << EVTCHN_FIFO_PENDING;
+    const auto prev = word->fetch_or(mask);
+
+    return is_bit_set(prev, EVTCHN_FIFO_PENDING);
 }
 
-void evtchn_op::port_set_linked(port_t port)
+void evtchn_op::word_set_busy(word_t *word)
 {
-    auto word = this->port_to_word(port);
-    word->fetch_or(1U << EVTCHN_FIFO_LINKED);
-}
-
-void evtchn_op::port_set_busy(port_t port)
-{
-    auto word = this->port_to_word(port);
     word->fetch_or(1U << EVTCHN_FIFO_BUSY);
 }
 
-void evtchn_op::port_clear_pending(port_t port)
+bool evtchn_op::word_test_and_set_busy(word_t *word)
 {
-    auto word = this->port_to_word(port);
+    const auto mask = 1U << EVTCHN_FIFO_BUSY;
+    const auto prev = word->fetch_or(mask);
+
+    return is_bit_set(prev, EVTCHN_FIFO_BUSY);
+}
+
+void evtchn_op::word_set_masked(word_t *word)
+{
+    word->fetch_or(1U << EVTCHN_FIFO_MASKED);
+}
+
+bool evtchn_op::word_test_and_set_masked(word_t *word)
+{
+    const auto mask = 1U << EVTCHN_FIFO_MASKED;
+    const auto prev = word->fetch_or(mask);
+
+    return is_bit_set(prev, EVTCHN_FIFO_MASKED);
+}
+
+void evtchn_op::word_set_linked(word_t *word)
+{
+    word->fetch_or(1U << EVTCHN_FIFO_LINKED);
+}
+
+bool evtchn_op::word_test_and_set_linked(word_t *word)
+{
+    const auto mask = 1U << EVTCHN_FIFO_LINKED;
+    const auto prev = word->fetch_or(mask);
+
+    return is_bit_set(prev, EVTCHN_FIFO_LINKED);
+}
+
+void evtchn_op::word_clear_pending(word_t *word)
+{
     word->fetch_and(~(1U << EVTCHN_FIFO_PENDING));
 }
 
-void evtchn_op::port_clear_masked(port_t port)
+bool evtchn_op::word_test_and_clear_pending(word_t *word)
 {
-    auto word = this->port_to_word(port);
+    const auto mask = ~(1U << EVTCHN_FIFO_PENDING);
+    const auto prev = word->fetch_and(mask);
+
+    return is_bit_cleared(prev, EVTCHN_FIFO_PENDING);
+}
+
+void evtchn_op::word_clear_busy(word_t *word)
+{
+    word->fetch_and(~(1U << EVTCHN_FIFO_BUSY));
+}
+
+bool evtchn_op::word_test_and_clear_busy(word_t *word)
+{
+    const auto mask = ~(1U << EVTCHN_FIFO_BUSY);
+    const auto prev = word->fetch_and(mask);
+
+    return is_bit_cleared(prev, EVTCHN_FIFO_BUSY);
+}
+
+void evtchn_op::word_clear_masked(word_t *word)
+{
     word->fetch_and(~(1U << EVTCHN_FIFO_MASKED));
 }
 
-void evtchn_op::port_clear_linked(port_t port)
+bool evtchn_op::word_test_and_clear_masked(word_t *word)
 {
-    auto word = this->port_to_word(port);
+    const auto mask = ~(1U << EVTCHN_FIFO_MASKED);
+    const auto prev = word->fetch_and(mask);
+
+    return is_bit_cleared(prev, EVTCHN_FIFO_MASKED);
+}
+
+void evtchn_op::word_clear_linked(word_t *word)
+{
     word->fetch_and(~(1U << EVTCHN_FIFO_LINKED));
 }
 
-void evtchn_op::port_clear_busy(port_t port)
+bool evtchn_op::word_test_and_clear_linked(word_t *word)
 {
-    auto word = this->port_to_word(port);
-    word->fetch_and(~(1U << EVTCHN_FIFO_BUSY));
+    const auto mask = ~(1U << EVTCHN_FIFO_LINKED);
+    const auto prev = word->fetch_and(mask);
+
+    return is_bit_cleared(prev, EVTCHN_FIFO_LINKED);
 }
 
 }
