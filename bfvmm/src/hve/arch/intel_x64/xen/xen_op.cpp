@@ -132,6 +132,7 @@ xen_op_handler::xen_op_handler(
 
     ADD_VMCALL_HANDLER(HYPERVISOR_memory_op);
     ADD_VMCALL_HANDLER(HYPERVISOR_xen_version);
+    ADD_VMCALL_HANDLER(HYPERVISOR_vm_assist);
     ADD_VMCALL_HANDLER(HYPERVISOR_hvm_op);
     ADD_VMCALL_HANDLER(HYPERVISOR_event_channel_op);
     ADD_VMCALL_HANDLER(HYPERVISOR_vcpu_op);
@@ -1122,6 +1123,35 @@ xen_op_handler::XENVER_get_features_handler(
     catchall({
         vcpu->set_rax(FAILURE);
     })
+}
+
+// -----------------------------------------------------------------------------
+// HYPERVISOR_vm_assist
+// -----------------------------------------------------------------------------
+
+bool
+xen_op_handler::HYPERVISOR_vm_assist(gsl::not_null<vcpu *> vcpu)
+{
+    if (vcpu->rax() != __HYPERVISOR_vm_assist) {
+        return false;
+    }
+
+    // Comments in linux/arch/x86/xen/setup.c suggest that these are not
+    // used for HVMs. But we are PVH so are we PV too in this case?
+    //
+    vcpu->set_rax(FAILURE);
+
+    //switch (vcpu->rdi()) {
+    //    case VMASST_CMD_enable:
+    //        vcpu->set_rax(SUCCESS);
+    //        break;
+
+    //    default:
+    //        vcpu->set_rax(FAILURE);
+    //        return false;
+    //}
+
+    return true;
 }
 
 // -----------------------------------------------------------------------------

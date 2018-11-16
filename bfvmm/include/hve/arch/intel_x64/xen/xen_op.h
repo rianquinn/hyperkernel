@@ -170,6 +170,8 @@ private:
     bool HYPERVISOR_xen_version(gsl::not_null<vcpu *> vcpu);
     void XENVER_get_features_handler(gsl::not_null<vcpu *> vcpu);
 
+    bool HYPERVISOR_vm_assist(gsl::not_null<vcpu *> vcpu);
+
     bool HYPERVISOR_vcpu_op(gsl::not_null<vcpu *> vcpu);
     void VCPUOP_stop_periodic_timer_handler(gsl::not_null<vcpu *> vcpu);
     void VCPUOP_register_vcpu_time_memory_area_handler(gsl::not_null<vcpu *> vcpu);
