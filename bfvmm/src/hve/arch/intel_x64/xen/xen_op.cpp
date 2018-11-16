@@ -93,6 +93,9 @@ constexpr auto GHz = 1000000000ULL;
 #define ADD_EPT_READ_HANDLER(b)                                                                     \
     m_vcpu->add_ept_read_violation_handler(make_delegate(ept_violation_handler, b))
 
+#define ADD_VMX_PET_HANDLER(b) \
+    m_vcpu->add_vmx_preemption_timer_handler(make_delegate(vmx_preemption_timer_handler, b))
+
 // =============================================================================
 // Implementation
 // =============================================================================
@@ -235,6 +238,9 @@ xen_op_handler::xen_op_handler(
     vcpu->pass_through_io_accesses(0x3fd);
 
     ADD_EPT_WRITE_HANDLER(xapic_handle_write);
+
+    m_pet_shift = ::intel_x64::msrs::ia32_vmx_misc::preemption_timer_decrement::get();
+    ADD_VMX_PET_HANDLER(handle_vmx_pet);
 }
 
 static uint64_t
@@ -292,6 +298,15 @@ tsc_frequency(void)
 
     freq /= 1000;
     return freq * numerator / denominator;
+}
+
+bool
+xen_op_handler::handle_vmx_pet(gsl::not_null<vcpu_t *> vcpu)
+{
+    bfignored(vcpu);
+    m_evtchn_op->handle_vmx_pet(vcpu);
+
+    return true;
 }
 
 void
@@ -1133,6 +1148,14 @@ xen_op_handler::HYPERVISOR_vcpu_op(gsl::not_null<vcpu *> vcpu)
             this->VCPUOP_register_runstate_memory_area_handler(vcpu);
             return true;
 
+        case VCPUOP_stop_singleshot_timer:
+            this->VCPUOP_stop_singleshot_timer_handler(vcpu);
+            return true;
+
+        case VCPUOP_set_singleshot_timer:
+            this->VCPUOP_set_singleshot_timer_handler(vcpu);
+            return true;
+
         default:
             break;
     };
@@ -1145,6 +1168,41 @@ void
 xen_op_handler::VCPUOP_stop_periodic_timer_handler(gsl::not_null<vcpu *> vcpu)
 {
     vcpu->set_rax(SUCCESS);
+}
+
+void
+xen_op_handler::VCPUOP_stop_singleshot_timer_handler(gsl::not_null<vcpu *> vcpu)
+{
+    vcpu->set_rax(SUCCESS);
+}
+
+void
+xen_op_handler::VCPUOP_set_singleshot_timer_handler(gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        expects(vcpu->rsi() == 0);
+
+        auto arg = vcpu->map_arg<vcpu_set_singleshot_timer_t>(vcpu->rdx());
+        auto deadline = arg->timeout_abs_ns;
+        auto tsc = ::x64::read_tsc::get();
+        auto now = this->tsc_to_sys_time(tsc);
+
+        if ((arg->flags & VCPU_SSHOTTMR_future) && deadline < now) {
+            vcpu->set_rax(FAILURE);
+            return;
+        }
+
+        auto ns = now - deadline;
+        auto tsc_ticks = ns * (m_tsc_freq_khz / 1000000U);
+        auto pet_ticks = tsc_ticks >> m_pet_shift;
+
+        m_vcpu->set_vmx_preemption_timer(pet_ticks);
+        m_vcpu->enable_vmx_preemption_timer();
+
+        vcpu->set_rax(SUCCESS);
+    } catchall ({
+        vcpu->set_rax(FAILURE);
+    });
 }
 
 void

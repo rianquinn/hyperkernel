@@ -120,6 +120,10 @@ public:
     ///
     void set_priority(const gsl::not_null<evtchn_set_priority_t *> pri);
 
+    /// Handle VMX preemption timer
+    ///
+    void handle_vmx_pet(gsl::not_null<vcpu_t *> vcpu);
+
 private:
 
     void bind_virq_timer(gsl::not_null<evtchn_bind_virq_t *> bind);

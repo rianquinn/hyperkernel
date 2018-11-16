@@ -174,6 +174,8 @@ private:
     void VCPUOP_stop_periodic_timer_handler(gsl::not_null<vcpu *> vcpu);
     void VCPUOP_register_vcpu_time_memory_area_handler(gsl::not_null<vcpu *> vcpu);
     void VCPUOP_register_runstate_memory_area_handler(gsl::not_null<vcpu *> vcpu);
+    void VCPUOP_stop_singleshot_timer_handler(gsl::not_null<vcpu *> vcpu);
+    void VCPUOP_set_singleshot_timer_handler(gsl::not_null<vcpu *> vcpu);
 
     bool HYPERVISOR_hvm_op(gsl::not_null<vcpu *> vcpu);
     void HVMOP_set_param_handler(gsl::not_null<vcpu *> vcpu);
@@ -208,6 +210,8 @@ private:
     void reset_vcpu_time_info();
     void update_vcpu_time_info();
 
+    bool handle_vmx_pet(gsl::not_null<vcpu_t *> vcpu);
+
     // -------------------------------------------------------------------------
     // Quirks
     // -------------------------------------------------------------------------
@@ -219,8 +223,7 @@ private:
     bfn::once_flag m_tsc_once_flag{};
 
     uint64_t m_apic_base{};
-    uint64_t m_pet_divide{};
-    uint64_t m_pet_vector{};
+    uint64_t m_pet_shift{};
     uint64_t m_tsc_freq_khz{};
 
     std::unordered_map<uint32_t, uint64_t> m_msrs;

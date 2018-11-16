@@ -122,6 +122,23 @@ evtchn_op::set_priority(const gsl::not_null<evtchn_set_priority_t *> pri)
     chan->set_priority(pri->priority);
 }
 
+void
+evtchn_op::handle_vmx_pet(gsl::not_null<vcpu_t *> vcpu)
+{
+    bfignored(vcpu);
+
+    auto port = m_virq_to_port[VIRQ_TIMER];
+    expects(port > 0);
+
+    auto chan = this->port_to_chan(port);
+    expects(chan != nullptr);
+    expects(chan->port() == port);
+    expects(chan->state() == evtchn::state_virq);
+
+    this->set_pending(chan);
+    m_vcpu->disable_vmx_preemption_timer();
+}
+
 // =============================================================================
 // Initialization
 // =============================================================================
@@ -311,11 +328,21 @@ evtchn_op::set_pending(chan_t *chan)
     auto wasnt_ready = (m_ctl_blk->ready & bit) == 0;
 
     if (!linked && wasnt_ready) {
-        auto &info = m_xen_op->shared_info()->vcpu_info[0];
-        if (info.evtchn_upcall_pending) {
+        auto vcpu_info = &m_xen_op->shared_info()->vcpu_info[0];
+        if (vcpu_info->evtchn_upcall_pending) {
             return;
         }
-        info.evtchn_upcall_pending |= 1;
+
+        vcpu_info->evtchn_upcall_pending |= 1;
+
+        auto sel = &vcpu_info->evtchn_pending_sel;
+        auto idx0 = port / bits_per_xen_ulong;
+        *sel |= set_bit(*sel, idx0);
+
+        auto pen = &m_xen_op->shared_info()->evtchn_pending[idx0];
+        auto idx1 = port % bits_per_xen_ulong;
+        *pen |= set_bit(*pen, idx1);
+
         m_vcpu->queue_external_interrupt(m_cb_via);
     }
 
