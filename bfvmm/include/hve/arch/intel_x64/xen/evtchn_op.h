@@ -28,6 +28,7 @@
 #include "xen_op.h"
 
 #include <eapis/hve/arch/x64/unmapper.h>
+#include <bfmath.h>
 
 // -----------------------------------------------------------------------------
 // Exports

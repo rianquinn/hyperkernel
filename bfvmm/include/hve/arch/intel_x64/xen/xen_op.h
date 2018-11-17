@@ -25,8 +25,11 @@
 
 #include "public/xen.h"
 #include "public/vcpu.h"
+#include "public/grant_table.h"
 #include "public/arch-x86/cpuid.h"
+
 #include "evtchn_op.h"
+#include "gnttab_op.h"
 #include "sched_op.h"
 
 #include <eapis/hve/arch/intel_x64/vmexit/cpuid.h>
@@ -170,6 +173,9 @@ private:
     bool HYPERVISOR_xen_version(gsl::not_null<vcpu *> vcpu);
     void XENVER_get_features_handler(gsl::not_null<vcpu *> vcpu);
 
+    bool HYPERVISOR_grant_table_op(gsl::not_null<vcpu *> vcpu);
+    void GNTTABOP_query_size_handler(gsl::not_null<vcpu *> vcpu);
+
     bool HYPERVISOR_vm_assist(gsl::not_null<vcpu *> vcpu);
 
     bool HYPERVISOR_vcpu_op(gsl::not_null<vcpu *> vcpu);
@@ -243,6 +249,7 @@ private:
     eapis::x64::unique_map<uint8_t> m_console;
 
     std::unique_ptr<hyperkernel::intel_x64::evtchn_op> m_evtchn_op;
+    std::unique_ptr<hyperkernel::intel_x64::gnttab_op> m_gnttab_op;
     std::unique_ptr<hyperkernel::intel_x64::sched_op> m_sched_op;
 
 public:

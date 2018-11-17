@@ -23,6 +23,7 @@ include(${SOURCE_CMAKE_DIR}/project.cmake)
 init_project(
     INCLUDES ${PROJECT_SOURCE_DIR}/../include
     INCLUDES ${PROJECT_SOURCE_DIR}/../../include
+    INCLUDES ${PROJECT_SOURCE_DIR}/../../bfsdk/include
 )
 
 add_subdirectory(domain)

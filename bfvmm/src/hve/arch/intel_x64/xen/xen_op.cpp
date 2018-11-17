@@ -109,7 +109,8 @@ xen_op_handler::xen_op_handler(
     gsl::not_null<vcpu *> vcpu
 ) :
     m_vcpu{vcpu},
-    m_evtchn_op{std::make_unique<evtchn_op>(vcpu, this)}
+    m_evtchn_op{std::make_unique<evtchn_op>(vcpu, this)},
+    m_gnttab_op{std::make_unique<gnttab_op>(vcpu, this)}
 {
     using namespace vmcs_n;
 
@@ -132,6 +133,7 @@ xen_op_handler::xen_op_handler(
 
     ADD_VMCALL_HANDLER(HYPERVISOR_memory_op);
     ADD_VMCALL_HANDLER(HYPERVISOR_xen_version);
+    ADD_VMCALL_HANDLER(HYPERVISOR_grant_table_op);
     ADD_VMCALL_HANDLER(HYPERVISOR_vm_assist);
     ADD_VMCALL_HANDLER(HYPERVISOR_hvm_op);
     ADD_VMCALL_HANDLER(HYPERVISOR_event_channel_op);
@@ -1121,6 +1123,41 @@ xen_op_handler::XENVER_get_features_handler(
         vcpu->set_rax(SUCCESS);
     }
     catchall({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
+// -----------------------------------------------------------------------------
+// HYPERVISOR_grant_table_op
+// -----------------------------------------------------------------------------
+
+bool
+xen_op_handler::HYPERVISOR_grant_table_op(gsl::not_null<vcpu *> vcpu)
+{
+    if (vcpu->rax() != __HYPERVISOR_grant_table_op) {
+        return false;
+    }
+
+    switch (vcpu->rdi()) {
+        case GNTTABOP_query_size:
+            this->GNTTABOP_query_size_handler(vcpu);
+            return true;
+
+        default:
+            break;
+    }
+
+    throw std::runtime_error("unknown HYPERVISOR_grant_tab_op cmd");
+}
+
+void
+xen_op_handler::GNTTABOP_query_size_handler(gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        auto arg = vcpu->map_arg<gnttab_query_size_t>(vcpu->rsi());
+        expects(arg->dom == DOMID_SELF);
+        m_gnttab_op->query_size(arg.get());
+    } catchall ({
         vcpu->set_rax(FAILURE);
     })
 }
