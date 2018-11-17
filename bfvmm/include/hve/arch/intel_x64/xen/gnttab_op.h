@@ -21,6 +21,7 @@
 
 #include "../base.h"
 #include "public/grant_table.h"
+#include "public/memory.h"
 #include "xen_op.h"
 
 #include <eapis/hve/arch/x64/unmapper.h>
@@ -56,9 +57,8 @@ class EXPORT_HYPERKERNEL_HVE gnttab_op
 {
 public:
 
-    using entry_t = grant_entry_v2_t;
-
-    static_assert(is_power_of_2(sizeof(entry_t)));
+    using shared_entry_t = grant_entry_v2_t;
+    static_assert(is_power_of_2(sizeof(shared_entry_t)));
 
     /// Constructor
     ///
@@ -87,16 +87,21 @@ public:
     ///
     void set_version(gsl::not_null<gnttab_set_version_t *> arg);
 
+    /// Map grant table
+    ///
+    void mapspace_grant_table(gsl::not_null<xen_add_to_physmap_t *> arg);
+
 private:
 
     /// Max number of frames per domain (the Xen default)
     //
     static constexpr auto max_nr_frames = 64;
 
-    std::vector<page_ptr<entry_t>> m_gnttab;
-
     vcpu *m_vcpu{};
     xen_op_handler *m_xen_op{};
+    uint64_t m_version{};
+
+    std::vector<page_ptr<shared_entry_t>> m_shared_gnttab;
 
 public:
 

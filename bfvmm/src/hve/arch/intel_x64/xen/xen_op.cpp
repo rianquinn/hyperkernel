@@ -1056,8 +1056,14 @@ xen_op_handler::XENMEM_add_to_physmap_handler(
                 this->reset_vcpu_time_info();
                 break;
 
+            case XENMAPSPACE_grant_table:
+                m_gnttab_op->mapspace_grant_table(xen_add_to_physmap_arg.get());
+                break;
+
             default:
-                throw std::runtime_error("XENMEM_add_to_physmap: unknown space");
+                throw std::runtime_error(
+                    "XENMEM_add_to_physmap: unknown space: " +
+                    std::to_string(xen_add_to_physmap_arg->space));
         };
 
         vcpu->set_rax(SUCCESS);
@@ -1206,7 +1212,6 @@ xen_op_handler::GNTTABOP_set_version_handler(gsl::not_null<vcpu *> vcpu)
 {
     try {
         auto arg = vcpu->map_arg<gnttab_set_version_t>(vcpu->rsi());
-        expects(arg->dom == DOMID_SELF);
         m_gnttab_op->set_version(arg.get());
         vcpu->set_rax(SUCCESS);
     } catchall ({

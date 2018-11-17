@@ -33,16 +33,17 @@ gnttab_op::gnttab_op(
     gsl::not_null<xen_op_handler *> handler)
 :
     m_vcpu{vcpu},
-    m_xen_op{handler}
+    m_xen_op{handler},
+    m_version{2}
 {
-    m_gnttab.reserve(max_nr_frames);
-    m_gnttab.push_back(make_page<entry_t>());
+    m_shared_gnttab.reserve(max_nr_frames);
+    m_shared_gnttab.push_back(make_page<shared_entry_t>());
 }
 
 void
 gnttab_op::query_size(gsl::not_null<gnttab_query_size_t *> arg)
 {
-    arg->nr_frames = m_gnttab.size();
+    arg->nr_frames = m_shared_gnttab.size();
     arg->max_nr_frames = max_nr_frames;
     arg->status = GNTST_okay;
 }
@@ -50,7 +51,31 @@ gnttab_op::query_size(gsl::not_null<gnttab_query_size_t *> arg)
 void
 gnttab_op::set_version(gsl::not_null<gnttab_set_version_t *> arg)
 {
-    expects(arg->version == 2);
+    arg->version = m_version;
+}
+
+void
+gnttab_op::mapspace_grant_table(gsl::not_null<xen_add_to_physmap_t *> arg)
+{
+    expects((arg->idx & XENMAPIDX_grant_table_status) == 0);
+
+    auto hpa = 0ULL;
+    auto idx = arg->idx;
+    auto size = m_shared_gnttab.size();
+
+    // Get the mfn
+    //
+    if (idx < size) {
+        auto hva = m_shared_gnttab[idx].get();
+        hpa = g_mm->virtptr_to_physint(hva);
+    } else {
+        expects(size < m_shared_gnttab.capacity());
+        auto map = make_page<shared_entry_t>();
+        hpa = g_mm->virtptr_to_physint(map.get());
+        m_shared_gnttab.push_back(std::move(map));
+    }
+
+    m_vcpu->map_4k_rw(arg->gpfn << x64::pt::page_shift, hpa);
 }
 
 }
