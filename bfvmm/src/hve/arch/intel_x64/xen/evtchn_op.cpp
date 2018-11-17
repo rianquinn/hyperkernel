@@ -90,6 +90,14 @@ evtchn_op::set_callback_via(uint64_t via)
     m_vcpu->queue_external_interrupt(via);
 }
 
+evtchn_op::port_t
+evtchn_op::bind_console()
+{ return this->bind_reserved(); }
+
+evtchn_op::port_t
+evtchn_op::bind_store()
+{ return this->bind_reserved(); }
+
 void
 evtchn_op::bind_virq(gsl::not_null<evtchn_bind_virq_t *> bind)
 {
@@ -184,6 +192,19 @@ evtchn_op::setup_ports()
 
     info->evtchn_upcall_pending = 1ULL;
     info->evtchn_pending_sel = ~0ULL;
+}
+
+evtchn_op::port_t
+evtchn_op::bind_reserved()
+{
+    const auto port = this->make_new_port();
+    auto chan = this->port_to_chan(port);
+
+    //TODO
+    chan->set_port(port);
+    chan->set_state(evtchn::state_reserved);
+
+    return port;
 }
 
 void

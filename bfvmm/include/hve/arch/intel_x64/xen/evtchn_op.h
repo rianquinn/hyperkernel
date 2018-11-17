@@ -113,6 +113,14 @@ public:
     ///
     void bind_virq(gsl::not_null<evtchn_bind_virq_t *> bind);
 
+    /// Bind console
+    ///
+    port_t bind_console();
+
+    /// Bind store
+    ///
+    port_t bind_store();
+
     /// Expand array
     ///
     void expand_array(gsl::not_null<evtchn_expand_array_t *> arr);
@@ -127,6 +135,7 @@ public:
 
 private:
 
+    port_t bind_reserved();
     void bind_virq_timer(gsl::not_null<evtchn_bind_virq_t *> bind);
 
     // Static constants

@@ -1584,12 +1584,22 @@ xen_op_handler::HVMOP_get_param_handler(gsl::not_null<vcpu *> vcpu)
 
         switch (arg->index) {
             case HVM_PARAM_CONSOLE_EVTCHN:
-                arg->value = 1;
+                arg->value = m_evtchn_op->bind_console();
                 break;
 
             case HVM_PARAM_CONSOLE_PFN: {
                 m_console = vcpu->map_gpa_4k<uint8_t>(CONSOLE_GPA);
                 arg->value = CONSOLE_GPA >> x64::pt::page_shift;
+                break;
+            }
+
+            case HVM_PARAM_STORE_EVTCHN:
+                arg->value = m_evtchn_op->bind_store();
+                break;
+
+            case HVM_PARAM_STORE_PFN: {
+                m_store = vcpu->map_gpa_4k<uint8_t>(STORE_GPA);
+                arg->value = STORE_GPA >> x64::pt::page_shift;
                 break;
             }
 

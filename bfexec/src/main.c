@@ -321,19 +321,24 @@ typedef struct {
     char console[0x1000];
 } reserved_7000_t;
 
+typedef struct {
+    char store[0x1000];
+} reserved_8000_t;
+
 #ifndef REAL_MODE_SIZE
 #define REAL_MODE_SIZE (6 * 0x1000)
 #endif
 
 typedef struct {
     char rm_trampoline[REAL_MODE_SIZE];
-} reserved_8000_t;
+} reserved_9000_t;
 
 reserved_4000_t *g_reserved_4000 = 0;   /* Xen start info */
 reserved_5000_t *g_reserved_5000 = 0;   /* Xen cmdline */
 reserved_6000_t *g_reserved_6000 = 0;   /* Xen shared info page */
 reserved_7000_t *g_reserved_7000 = 0;   /* Xen console */
-reserved_8000_t *g_reserved_8000 = 0;   /* Real-mode trampoline */
+reserved_8000_t *g_reserved_8000 = 0;   /* Xen store */
+reserved_9000_t *g_reserved_9000 = 0;   /* Real-mode trampoline */
 
 uint64_t g_ram_addr = 0x1000000;
 uint64_t g_ram_size = 0x8000000;
@@ -396,6 +401,18 @@ setup_e820_map()
     ret = __domain_op__add_e820_entry(
         g_vm.domainid,
         0x8000,
+        0x1000,
+        XEN_HVM_MEMMAP_TYPE_RAM
+    );
+
+    if (ret != SUCCESS) {
+        BFALERT("__domain_op__add_e820_entry failed\n");
+        return FAILURE;
+    }
+
+    ret = __domain_op__add_e820_entry(
+        g_vm.domainid,
+        0x9000,
         REAL_MODE_SIZE,
         XEN_HVM_MEMMAP_TYPE_RAM
     );
@@ -407,8 +424,8 @@ setup_e820_map()
 
     ret = __domain_op__add_e820_entry(
         g_vm.domainid,
-        0x8000 + REAL_MODE_SIZE,
-        g_ram_addr - (0x8000 + REAL_MODE_SIZE),
+        0x9000 + REAL_MODE_SIZE,
+        g_ram_addr - (0x9000 + REAL_MODE_SIZE),
         XEN_HVM_MEMMAP_TYPE_UNUSABLE
     );
 
@@ -628,18 +645,38 @@ setup_xen_console()
 }
 
 status_t
-setup_rm_trampoline()
+setup_xen_store()
 {
     status_t ret;
-    int size = REAL_MODE_SIZE;
 
-    g_reserved_8000 = (reserved_8000_t *)alloc_buffer(size);
+    g_reserved_8000 = (reserved_8000_t *)alloc_page();
     if (g_reserved_8000 == 0) {
         BFALERT("g_reserved_8000 alloc failed: %s\n", strerror(errno));
         return FAILURE;
     }
 
-    ret = domain_op__map_buffer((uint64_t)g_reserved_8000, 0x8000, size, MAP_RWE);
+    ret = domain_op__map_gpa((uint64_t)g_reserved_8000, 0x8000, MAP_RW);
+    if (ret != BF_SUCCESS) {
+        BFALERT("__domain_op__map_gpa failed\n");
+        return FAILURE;
+    }
+
+    return SUCCESS;
+}
+
+status_t
+setup_rm_trampoline()
+{
+    status_t ret;
+    int size = REAL_MODE_SIZE;
+
+    g_reserved_9000 = (reserved_9000_t *)alloc_buffer(size);
+    if (g_reserved_9000 == 0) {
+        BFALERT("g_reserved_9000 alloc failed: %s\n", strerror(errno));
+        return FAILURE;
+    }
+
+    ret = domain_op__map_buffer((uint64_t)g_reserved_9000, 0x9000, size, MAP_RWE);
     if (ret != BF_SUCCESS) {
         BFALERT("__domain_op__map_buffer failed\n");
         return FAILURE;
@@ -797,6 +834,12 @@ main(int argc, const char *argv[])
     ret = setup_xen_console();
     if (ret != SUCCESS) {
         BFALERT("setup_xen_console failed\n");
+        goto CLEANUP_VCPU;
+    }
+
+    ret = setup_xen_store();
+    if (ret != SUCCESS) {
+        BFALERT("setup_xen_store failed\n");
         goto CLEANUP_VCPU;
     }
 

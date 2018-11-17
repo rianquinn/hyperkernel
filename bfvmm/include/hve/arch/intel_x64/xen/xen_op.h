@@ -249,6 +249,7 @@ private:
     eapis::x64::unique_map<vcpu_time_info_t> m_time_info;
     eapis::x64::unique_map<shared_info_t> m_shared_info;
     eapis::x64::unique_map<uint8_t> m_console;
+    eapis::x64::unique_map<uint8_t> m_store;
 
     std::unique_ptr<hyperkernel::intel_x64::evtchn_op> m_evtchn_op;
     std::unique_ptr<hyperkernel::intel_x64::gnttab_op> m_gnttab_op;
