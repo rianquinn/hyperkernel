@@ -185,6 +185,14 @@ domain::map_4k_rwe(uintptr_t gpa, uintptr_t hpa)
 { m_ept_map.map_4k(gpa, hpa, ept::mmap::attr_type::read_write_execute); }
 
 void
+domain::unmap(uintptr_t gpa)
+{ m_ept_map.unmap(gpa); }
+
+void
+domain::release(uintptr_t gpa)
+{ m_ept_map.release(gpa); }
+
+void
 domain::add_e820_entry(const e820_entry_t &entry)
 { m_e820_map.emplace_back(entry); }
 

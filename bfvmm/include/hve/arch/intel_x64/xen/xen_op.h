@@ -167,6 +167,7 @@ private:
     // -------------------------------------------------------------------------
 
     bool HYPERVISOR_memory_op(gsl::not_null<vcpu *> vcpu);
+    void XENMEM_decrease_reservation_handler(gsl::not_null<vcpu *> vcpu);
     void XENMEM_add_to_physmap_handler(gsl::not_null<vcpu *> vcpu);
     void XENMEM_memory_map_handler(gsl::not_null<vcpu *> vcpu);
 
@@ -175,6 +176,7 @@ private:
 
     bool HYPERVISOR_grant_table_op(gsl::not_null<vcpu *> vcpu);
     void GNTTABOP_query_size_handler(gsl::not_null<vcpu *> vcpu);
+    void GNTTABOP_set_version_handler(gsl::not_null<vcpu *> vcpu);
 
     bool HYPERVISOR_vm_assist(gsl::not_null<vcpu *> vcpu);
 

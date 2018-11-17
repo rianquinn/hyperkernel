@@ -56,7 +56,9 @@ class EXPORT_HYPERKERNEL_HVE gnttab_op
 {
 public:
 
-    //static_assert(is_power_of_2(
+    using entry_t = grant_entry_v2_t;
+
+    static_assert(is_power_of_2(sizeof(entry_t)));
 
     /// Constructor
     ///
@@ -81,14 +83,17 @@ public:
     ///
     void query_size(gsl::not_null<gnttab_query_size_t *> arg);
 
+    /// Set version
+    ///
+    void set_version(gsl::not_null<gnttab_set_version_t *> arg);
+
 private:
 
     /// Max number of frames per domain (the Xen default)
     //
-    static constexpr auto max_grant_frames = 64;
+    static constexpr auto max_nr_frames = 64;
 
-
-
+    std::vector<page_ptr<entry_t>> m_gnttab;
 
     vcpu *m_vcpu{};
     xen_op_handler *m_xen_op{};

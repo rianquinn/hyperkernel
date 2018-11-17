@@ -317,20 +317,8 @@ std::vector<e820_entry_t> &
 vcpu::e820_map()
 { return m_domain->e820_map(); }
 
-//------------------------------------------------------------------------------
-// Scheduling
-//------------------------------------------------------------------------------
-
-void
-vcpu::schedule_enqueue(gsl::not_null<vcpu *> vcpu)
-{ m_schedule_queue.push(vcpu); }
-
-void
-vcpu::schedule_dequeue()
-{ m_schedule_queue.pop(); }
-
-gsl::not_null<vcpu *>
-vcpu::schedule_next() const
-{ return m_schedule_queue.front(); }
+domain *
+vcpu::dom()
+{ return m_domain; }
 
 }

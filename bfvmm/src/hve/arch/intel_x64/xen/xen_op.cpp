@@ -984,6 +984,10 @@ xen_op_handler::HYPERVISOR_memory_op(
     }
 
     switch (vcpu->rdi()) {
+        case XENMEM_decrease_reservation:
+            this->XENMEM_decrease_reservation_handler(vcpu);
+            return true;
+
         case XENMEM_add_to_physmap:
             this->XENMEM_add_to_physmap_handler(vcpu);
             return true;
@@ -997,6 +1001,36 @@ xen_op_handler::HYPERVISOR_memory_op(
     };
 
     throw std::runtime_error("unknown HYPERVISOR_memory_op opcode");
+}
+
+void
+xen_op_handler::XENMEM_decrease_reservation_handler(
+    gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        auto arg = vcpu->map_arg<xen_memory_reservation_t>(vcpu->rsi());
+
+        expects(arg->domid == DOMID_SELF);
+        expects(arg->extent_order == 0);
+
+        auto gva = arg->extent_start.p;
+        auto len = arg->nr_extents * sizeof(xen_pfn_t);
+        auto map = vcpu->map_gva_4k<xen_pfn_t>(gva, len);
+        auto gfn = map.get();
+
+        for (auto i = 0; i < arg->nr_extents; i++) {
+            auto dom = m_vcpu->dom();
+            auto gpa = (gfn[i] << x64::pt::page_shift);
+            dom->unmap(gpa);
+            dom->release(gpa);
+        }
+
+        vcpu->set_rax(arg->nr_extents);
+    }
+    catchall({
+        vcpu->set_rax(FAILURE);
+    })
+
 }
 
 void
@@ -1143,6 +1177,10 @@ xen_op_handler::HYPERVISOR_grant_table_op(gsl::not_null<vcpu *> vcpu)
             this->GNTTABOP_query_size_handler(vcpu);
             return true;
 
+        case GNTTABOP_set_version:
+            this->GNTTABOP_set_version_handler(vcpu);
+            return true;
+
         default:
             break;
     }
@@ -1157,6 +1195,20 @@ xen_op_handler::GNTTABOP_query_size_handler(gsl::not_null<vcpu *> vcpu)
         auto arg = vcpu->map_arg<gnttab_query_size_t>(vcpu->rsi());
         expects(arg->dom == DOMID_SELF);
         m_gnttab_op->query_size(arg.get());
+        vcpu->set_rax(SUCCESS);
+    } catchall ({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
+void
+xen_op_handler::GNTTABOP_set_version_handler(gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        auto arg = vcpu->map_arg<gnttab_set_version_t>(vcpu->rsi());
+        expects(arg->dom == DOMID_SELF);
+        m_gnttab_op->set_version(arg.get());
+        vcpu->set_rax(SUCCESS);
     } catchall ({
         vcpu->set_rax(FAILURE);
     })
@@ -1320,35 +1372,35 @@ xen_op_handler::VCPUOP_register_runstate_memory_area_handler(
 bool
 xen_op_handler::HYPERVISOR_sched_op(gsl::not_null<vcpu *> vcpu)
 {
-    if (vcpu->rax() != __HYPERVISOR_sched_op) {
-        return false;
-    }
-
-    switch (vcpu->rdi()) {
-        case SCHEDOP_yield:
-            this->SCHEDOP_yield_handler(vcpu);
-            return true;
-
-        default:
-            break;
-    };
+//    if (vcpu->rax() != __HYPERVISOR_sched_op) {
+//        return false;
+//    }
+//
+//    switch (vcpu->rdi()) {
+//        case SCHEDOP_yield:
+//            this->SCHEDOP_yield_handler(vcpu);
+//            return true;
+//
+//        default:
+//            break;
+//    };
 
     throw std::runtime_error(
         "unknown HYPERVISOR_sched_op: " + std::to_string(vcpu->rdi()));
 }
 
-void
-xen_op_handler::SCHEDOP_yield_handler(gsl::not_null<vcpu *> vcpu)
-{
-    try {
-        m_sched_op->handle_yield(vcpu);
-        vcpu->set_rax(SUCCESS);
-        m_vcpu->return_and_continue();
-    }
-    catchall({
-        vcpu->set_rax(FAILURE);
-    })
-}
+//void
+//xen_op_handler::SCHEDOP_yield_handler(gsl::not_null<vcpu *> vcpu)
+//{
+//    try {
+//        m_sched_op->handle_yield(vcpu);
+//        vcpu->set_rax(SUCCESS);
+//        m_vcpu->return_and_continue();
+//    }
+//    catchall({
+//        vcpu->set_rax(FAILURE);
+//    })
+//}
 
 // -----------------------------------------------------------------------------
 // HYPERVISOR_event_channel_op

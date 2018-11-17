@@ -195,6 +195,32 @@ public:
     ///
     void map_4k_rwe(uintptr_t gpa, uintptr_t hpa);
 
+    /// Unmap GPA
+    ///
+    /// Unmaps a guest physical address
+    ///
+    /// @expects
+    /// @ensures
+    ///
+    /// @param gpa the guest physical address to unmap
+    ///
+    void unmap(uintptr_t gpa);
+
+    /// Release Virtual Address
+    ///
+    /// Returns any unused page tables back to the heap, releasing memory and
+    /// providing a means to reconfigure the granularity of a previous mapping.
+    ///
+    /// @note that unmap must be run for any existing mappings, otherwise this
+    ///     function has no effect.
+    ///
+    /// @expects
+    /// @ensures
+    ///
+    /// @param gpa the address to release
+    ///
+    void release(uintptr_t gpa);
+
 public:
 
     /// Add E820 Map Entry
