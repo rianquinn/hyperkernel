@@ -25,25 +25,6 @@
 #include <hve/arch/intel_x64/vcpu.h>
 #include <hve/arch/intel_x64/xen/evtchn_op.h>
 
-
-// When the guest receives an upcall, it does several things:
-// (transplanted from xen/xen/arch/x86/guest/xen.c)
-//
-// vcpu_info->evtchn_upcall_pending = 0
-// pending = atomic_read(vcpu_info->evtchn_pending_sel)
-//      while (pending) {
-//              b = first_set_bit(pending)
-//              evtchn = shared_info->evtchn_pending[b]
-//              clear_bit(b, &pending)
-//              evtchn &= ~shared_info->evtchn_mask[b]
-//              while (evtchn) {
-//                      port = first_set_bit(evtchn)
-//                      clear_bit(port, &evtchn)
-//                      port += b * BITS_PER_LONG
-//                      *process port*
-//              }
-//      }
-
 // =============================================================================
 // Implementation
 // =============================================================================
@@ -127,6 +108,8 @@ evtchn_op::set_priority(const gsl::not_null<evtchn_set_priority_t *> pri)
     auto chan = this->port_to_chan(pri->port);
     expects(chan != nullptr);
 
+    chan->set_prev_vcpuid(chan->vcpuid());
+    chan->set_prev_priority(chan->priority());
     chan->set_priority(pri->priority);
 }
 
@@ -187,11 +170,6 @@ evtchn_op::setup_ports()
             this->port_to_chan(p)->set_pending();
         }
     }
-
-    auto info = &m_xen_op->shared_info()->vcpu_info[0];
-
-    info->evtchn_upcall_pending = 1ULL;
-    info->evtchn_pending_sel = ~0ULL;
 }
 
 evtchn_op::port_t
@@ -225,72 +203,14 @@ evtchn_op::bind_virq_timer(gsl::not_null<evtchn_bind_virq_t *> bind)
     bind->port = port;
 }
 
-int
-evtchn_op::try_set_link(word_t *word, event_word_t *ew, port_t port)
-{
-    auto &expect = *ew;
-    if (is_bit_cleared(expect, EVTCHN_FIFO_LINKED)) {
-        return 0;
-    }
-
-    auto desire = (expect & ~((1 << EVTCHN_FIFO_BUSY) | port_mask)) | port;
-    return word->compare_exchange_strong(expect, desire) ? 1 : -EAGAIN;
-}
-
-
-/*
- * See xen/xen/common/event_fifo.c for reference
- *
- * Atomically set the LINK field iff it is still LINKED.
- *
- * The guest is only permitted to make the following changes to a
- * LINKED event.
- *
- * - set MASKED
- * - clear MASKED
- * - clear PENDING
- * - clear LINKED (and LINK)
- *
- * We block unmasking by the guest by marking the tail word as BUSY,
- * therefore, the cmpxchg() may fail at most 4 times.
- */
 bool
-evtchn_op::set_link(word_t *word, port_t port)
+evtchn_op::set_link(word_t *word, event_word_t *val, port_t link)
 {
-    auto w = word->load();
-    int ret = this->try_set_link(word, &w, port);
+    auto link_bits = (1U << EVTCHN_FIFO_LINKED) | link;
+    auto &expect = *val;
+    auto desire = (expect & ~((1 << EVTCHN_FIFO_BUSY) | port_mask)) | link_bits;
 
-    if (ret >= 0) {
-        return ret;
-    }
-
-    /*
-     * Try again, this time after marking the word
-     * busy to prevent guest unmasking.
-     */
-    this->word_set_busy(word);
-    w = word->load();
-
-    for (int i = 0; i < 4; i++) {
-        ret = this->try_set_link(word, &w, port);
-        if (ret >= 0) {
-            if (ret == 0) {
-                this->word_clear_busy(word);
-            }
-            return ret;
-        }
-    }
-
-    bfalert_nhex(0, "Failed to link port:", port);
-    this->word_clear_busy(word);
-
-    return 0;
-
-    //TODO:
-    // Xen returns 1 here which 't violates the iff above...
-    // It seems like we should return 0 here
-    //
-    // return 1;
+    return word->compare_exchange_strong(expect, desire);
 }
 
 void
@@ -298,9 +218,9 @@ evtchn_op::set_pending(chan_t *chan)
 {
     expects(m_ctl_blk);
 
-    const auto port = chan->port();
-    auto word = this->port_to_word(port);
-    if (!word) {
+    const auto new_port = chan->port();
+    auto new_word = this->port_to_word(new_port);
+    if (!new_word) {
 
         // The guest hasn't added the corresponding
         // event array, so we set pending for later
@@ -309,68 +229,33 @@ evtchn_op::set_pending(chan_t *chan)
         return;
     }
 
-    const auto was_pending = this->word_is_pending(word);
-    if (this->word_is_masked(word) || this->word_is_linked(word)) {
+    const auto was_pending = this->word_test_and_set_pending(new_word);
+    if (this->word_is_masked(new_word) || this->word_is_linked(new_word)) {
         return;
     }
 
-    if (this->word_test_and_set_linked(word)) {
-        //goto done;
+    auto p = chan->priority();
+    auto q = &m_queues.at(p);
+
+    // If the queue is empty, insert the tail and signal ready
+    if (q->head[p] == 0) {
+        q->head[p] = new_port;
+        q->tail = new_port;
+        m_ctl_blk->ready |= (1UL << p);
         return;
     }
 
-    auto next = &m_queues.at(chan->priority());
-    auto prev = &m_queues.at(chan->prev_priority());
+    auto tail_word = this->port_to_word(q->tail);
+    auto tail_val = tail_word->load();
 
-    if (prev->tail == port) {
-        prev->tail = null_port;
+    if (!this->set_link(tail_word, &tail_val, new_port)) {
+        bfalert_nhex(0, "Failed to set link:", new_port);
+        throw std::runtime_error("Failed to set link: " +
+                                 std::to_string(new_port));
     }
 
-    if (next != prev) {
-        chan->set_prev_vcpuid(chan->vcpuid());
-        chan->set_prev_priority(chan->priority());
-    }
-
-    bool linked = false;
-    if (next->tail != null_port) {
-        auto tail_word = this->port_to_word(next->tail);
-        linked = this->set_link(tail_word, port);
-    }
-
-    if (!linked) {
-        //TODO: atomic?
-        *next->head = port;
-    }
-
-    next->tail = port;
-    auto bit = 1UL << next->priority;
-
-    //TODO: atomic?
-    auto wasnt_ready = (m_ctl_blk->ready & bit) == 0;
-
-    if (!linked && wasnt_ready) {
-        auto vcpu_info = &m_xen_op->shared_info()->vcpu_info[0];
-        if (vcpu_info->evtchn_upcall_pending) {
-            return;
-        }
-
-        vcpu_info->evtchn_upcall_pending |= 1;
-
-        auto sel = &vcpu_info->evtchn_pending_sel;
-        auto idx0 = port / bits_per_xen_ulong;
-        *sel |= set_bit(*sel, idx0);
-
-        auto pen = &m_xen_op->shared_info()->evtchn_pending[idx0];
-        auto idx1 = port % bits_per_xen_ulong;
-        *pen |= set_bit(*pen, idx1);
-
-        m_vcpu->queue_external_interrupt(m_cb_via);
-    }
-
-//done:
-//    if (!was_pending) {
-//        this->check_pollers(port);
-//    }
+    q->tail = new_port;
+    m_ctl_blk->ready |= (1UL << p);
 }
 
 // Ports

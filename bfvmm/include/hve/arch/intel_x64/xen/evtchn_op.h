@@ -178,8 +178,7 @@ private:
 
     // Links
     //
-    int try_set_link(word_t *word, event_word_t *ew, port_t port);
-    bool set_link(word_t *word, port_t port);
+    bool set_link(word_t *word, event_word_t *val, port_t link);
     void set_pending(chan_t *chan);
 
     // Interface for atomic accesses to shared memory
