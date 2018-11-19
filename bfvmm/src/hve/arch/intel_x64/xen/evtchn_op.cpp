@@ -68,66 +68,75 @@ evtchn_op::set_callback_via(uint64_t via)
     // to inject whenever an upcall is pending.
     //
     m_cb_via = via;
-    m_vcpu->queue_external_interrupt(via);
+//    m_vcpu->queue_external_interrupt(via);
 }
 
 evtchn_op::port_t
 evtchn_op::bind_console()
-{ return this->bind_reserved(); }
+{
+    auto port = this->bind_reserved();
+    bfdebug_nhex(0, "bound console:", port);
+    return port;
+}
 
 evtchn_op::port_t
 evtchn_op::bind_store()
-{ return this->bind_reserved(); }
-
-void
-evtchn_op::bind_virq(gsl::not_null<evtchn_bind_virq_t *> bind)
 {
-    expects(bind->vcpu == 0);
-    expects(m_virq_to_port.at(bind->virq) == null_port);
-
-    switch (bind->virq) {
-        case VIRQ_TIMER:
-            this->bind_virq_timer(bind);
-            break;
-
-        default:
-            throw std::runtime_error("unhandled bind VIRQ: " +
-                                     std::to_string(bind->virq));
-    }
+    auto port = this->bind_reserved();
+    bfdebug_nhex(0, "bound store:", port);
+    return port;
 }
+
+
+//void
+//evtchn_op::bind_virq(gsl::not_null<evtchn_bind_virq_t *> bind)
+//{
+//    expects(bind->vcpu == 0);
+//    expects(m_virq_to_port.at(bind->virq) == null_port);
+//
+//    switch (bind->virq) {
+//        case VIRQ_TIMER:
+//            this->bind_virq_timer(bind);
+//            break;
+//
+//        default:
+//            throw std::runtime_error("unhandled bind VIRQ: " +
+//                                     std::to_string(bind->virq));
+//    }
+//}
 
 void
 evtchn_op::expand_array(gsl::not_null<evtchn_expand_array_t *> arr)
 { this->make_word_page(arr); }
 
+//void
+//evtchn_op::set_priority(const gsl::not_null<evtchn_set_priority_t *> pri)
+//{
+//    expects(pri->priority < m_queues.size());
+//
+//    auto chan = this->port_to_chan(pri->port);
+//    expects(chan != nullptr);
+//
+//    chan->set_prev_vcpuid(chan->vcpuid());
+//    chan->set_prev_priority(chan->priority());
+//    chan->set_priority(pri->priority);
+//}
+
+//void
+//evtchn_op::unmask(gsl::not_null<evtchn_unmask_t *> arg)
+//{
+//    auto word = this->port_to_word(arg->port);
+//    this->word_clear_masked(word);
+//
+//    if (this->word_is_pending(word)) {
+//        this->set_pending(this->port_to_chan(arg->port));
+//    }
+//}
+
 void
-evtchn_op::set_priority(const gsl::not_null<evtchn_set_priority_t *> pri)
+evtchn_op::send(gsl::not_null<evtchn_send_t *> arg)
 {
-    expects(pri->priority < m_queues.size());
-
-    auto chan = this->port_to_chan(pri->port);
-    expects(chan != nullptr);
-
-    chan->set_prev_vcpuid(chan->vcpuid());
-    chan->set_prev_priority(chan->priority());
-    chan->set_priority(pri->priority);
-}
-
-void
-evtchn_op::handle_vmx_pet(gsl::not_null<vcpu_t *> vcpu)
-{
-    bfignored(vcpu);
-
-    auto port = m_virq_to_port[VIRQ_TIMER];
-    expects(port > 0);
-
-    auto chan = this->port_to_chan(port);
-    expects(chan != nullptr);
-    expects(chan->port() == port);
-    expects(chan->state() == evtchn::state_virq);
-
-    this->set_pending(chan);
-    m_vcpu->disable_vmx_preemption_timer();
+    this->set_pending(this->port_to_chan(arg->port));
 }
 
 // =============================================================================
@@ -160,16 +169,16 @@ evtchn_op::setup_ports()
     this->make_chan_page(null_port);
     this->port_to_chan(null_port)->set_state(evtchn::state_reserved);
 
-    for (auto p = 1; p < chans_per_page; p++) {
-        auto arr = m_xen_op->shared_info()->evtchn_pending;
-        auto idx = p / bits_per_xen_ulong;
-        auto bit = p % bits_per_xen_ulong;
-        auto val = arr[idx];
-
-        if (is_bit_set(bit, val)) {
-            this->port_to_chan(p)->set_pending();
-        }
-    }
+//    for (auto p = 1; p < chans_per_page; p++) {
+//        auto arr = m_xen_op->shared_info()->evtchn_pending;
+//        auto idx = p / bits_per_xen_ulong;
+//        auto bit = p % bits_per_xen_ulong;
+//        auto val = arr[idx];
+//
+//        if (is_bit_set(bit, val)) {
+//            this->port_to_chan(p)->set_pending();
+//        }
+//    }
 }
 
 evtchn_op::port_t
@@ -225,25 +234,39 @@ evtchn_op::set_pending(chan_t *chan)
         // The guest hasn't added the corresponding
         // event array, so we set pending for later
         //
+        bfalert_nhex(0, "port doesn't map to word", new_port);
         chan->set_pending();
         return;
     }
 
-    const auto was_pending = this->word_test_and_set_pending(new_word);
-    if (this->word_is_masked(new_word) || this->word_is_linked(new_word)) {
-        return;
-    }
+//    const auto was_pending = this->word_test_and_set_pending(new_word);
+//    if (this->word_is_masked(new_word) || this->word_is_linked(new_word)) {
+//        bfalert_nhex(0, "word_is_masked", this->word_is_masked(new_word));
+//        bfalert_nhex(0, "word_is_linked", this->word_is_linked(new_word));
+//        return;
+//    }
 
+    this->word_set_pending(new_word);
     auto p = chan->priority();
     auto q = &m_queues.at(p);
 
     // If the queue is empty, insert the tail and signal ready
-    if (q->head[p] == 0) {
-        q->head[p] = new_port;
+    if (*q->head == 0) {
+        *q->head = new_port;
         q->tail = new_port;
+
         m_ctl_blk->ready |= (1UL << p);
+        ::intel_x64::barrier::wmb();
+        m_vcpu->queue_external_interrupt(m_cb_via);
+
+//        bfalert_nhex(0, "q @ p empty, p:", p);
+//        bfalert_nhex(0, "new_port:", new_port);
+//        bfalert_nhex(0, "ready:", m_ctl_blk->ready);
+
         return;
     }
+
+    bfalert_nhex(0, "q @ p NON empty, p:", p);
 
     auto tail_word = this->port_to_word(q->tail);
     auto tail_val = tail_word->load();
@@ -256,6 +279,8 @@ evtchn_op::set_pending(chan_t *chan)
 
     q->tail = new_port;
     m_ctl_blk->ready |= (1UL << p);
+    ::intel_x64::barrier::wmb();
+    m_vcpu->queue_external_interrupt(m_cb_via);
 }
 
 // Ports
@@ -381,13 +406,13 @@ evtchn_op::make_word_page(gsl::not_null<evtchn_expand_array_t *> expand)
     m_event_words.push_back(std::move(page));
     m_allocated_words += words_per_page;
 
-    for (auto p = prev; p < m_allocated_words; p++) {
-        auto chan = this->port_to_chan(p);
-        if (!chan || !chan->is_pending()) {
-            continue;
-        }
-        this->set_pending(chan);
-    }
+    //for (auto p = prev; p < m_allocated_words; p++) {
+    //    auto chan = this->port_to_chan(p);
+    //    if (!chan || !chan->is_pending()) {
+    //        continue;
+    //    }
+    //    this->set_pending(chan);
+    //}
 }
 
 bool evtchn_op::word_is_pending(word_t *word) const

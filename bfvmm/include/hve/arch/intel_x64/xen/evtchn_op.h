@@ -109,9 +109,25 @@ public:
     ///
     void set_callback_via(uint64_t via);
 
+    /// Expand array
+    ///
+    void expand_array(gsl::not_null<evtchn_expand_array_t *> arr);
+
+    /// Set priority
+    ///
+    void set_priority(const gsl::not_null<evtchn_set_priority_t *> pri);
+
     /// Bind virq
     ///
     void bind_virq(gsl::not_null<evtchn_bind_virq_t *> bind);
+
+    /// Unmask
+    ///
+    void unmask(gsl::not_null<evtchn_unmask_t *> arg);
+
+    /// Send
+    ///
+    void send(gsl::not_null<evtchn_send_t *> arg);
 
     /// Bind console
     ///
@@ -120,14 +136,6 @@ public:
     /// Bind store
     ///
     port_t bind_store();
-
-    /// Expand array
-    ///
-    void expand_array(gsl::not_null<evtchn_expand_array_t *> arr);
-
-    /// Set priority
-    ///
-    void set_priority(const gsl::not_null<evtchn_set_priority_t *> pri);
 
     /// Handle VMX preemption timer
     ///

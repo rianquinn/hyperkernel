@@ -47,6 +47,7 @@ constexpr auto xen_msr_debug_ndec       = 0xC0000600;
 constexpr auto xen_msr_debug_nhex       = 0xC0000700;
 
 constexpr auto GHz = 1000000000ULL;
+constexpr auto MHz = 1000000ULL;
 
 // =============================================================================
 // Macros
@@ -181,6 +182,7 @@ xen_op_handler::xen_op_handler(
 
     ADD_RDMSR_HANDLER(0x1A0, ia32_misc_enable_rdmsr_handler);       // TODO: use namespace name
     EMULATE_WRMSR(0x1A0, ia32_misc_enable_wrmsr_handler);           // TODO: use namespace name
+    EMULATE_WRMSR(0x6e0, handle_tsc_deadline);
 
     ADD_CPUID_HANDLER(0x0, cpuid_pass_through_handler);
     ADD_CPUID_HANDLER(0x2, cpuid_pass_through_handler);             // Passthrough cache info
@@ -215,6 +217,10 @@ xen_op_handler::xen_op_handler(
     EMULATE_IO_INSTRUCTION(0x4D0, io_zero_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0x4D1, io_zero_handler, io_ignore_handler);
 
+    /// NMI assertion
+    EMULATE_IO_INSTRUCTION(0x70, io_zero_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(0x71, io_zero_handler, io_ignore_handler);
+
     /// Ports used for TSC calibration against the PIT. See
     /// arch/x86/kernel/tsc.c:pit_calibrate_tsc for detail.
     /// Note that these ports are accessed on the Intel NUC.
@@ -243,7 +249,6 @@ xen_op_handler::xen_op_handler(
     ADD_EPT_WRITE_HANDLER(xapic_handle_write);
 
     m_pet_shift = ::intel_x64::msrs::ia32_vmx_misc::preemption_timer_decrement::get();
-    ADD_VMX_PET_HANDLER(handle_vmx_pet);
 }
 
 static uint64_t
@@ -307,7 +312,9 @@ bool
 xen_op_handler::handle_vmx_pet(gsl::not_null<vcpu_t *> vcpu)
 {
     bfignored(vcpu);
-    m_evtchn_op->handle_vmx_pet(vcpu);
+
+    m_vcpu->queue_external_interrupt(m_timer_vector);
+    m_vcpu->disable_vmx_preemption_timer();
 
     return true;
 }
@@ -483,6 +490,38 @@ xen_op_handler::xapic_handle_write_icr(uint64_t low)
     }
 }
 
+void
+xen_op_handler::xapic_handle_write_lvt_timer(uint64_t val)
+{
+    using namespace eapis::intel_x64::lapic;
+
+    auto mode = lvt::timer::mode::get(val);
+    switch (mode) {
+        case lvt::timer::mode::one_shot:
+            m_vcpu->lapic_write(lvt::timer::indx, val);
+            bfalert_info(0, "Timer: one_shot");
+            break;
+
+        case lvt::timer::mode::tsc_deadline:
+            m_vcpu->lapic_write(lvt::timer::indx, val);
+            ADD_VMX_PET_HANDLER(handle_vmx_pet);
+            m_timer_vector = lvt::timer::vector::get(val);
+            bfalert_info(0, "Timer: tsc_deadline");
+            break;
+
+        default:
+            throw std::runtime_error("Unsupported LVT timer mode: " +
+                                     std::to_string(mode));
+    }
+}
+
+void
+xen_op_handler::xapic_handle_write_init_count(uint64_t val)
+{
+    using namespace eapis::intel_x64::lapic;
+    m_vcpu->lapic_write(initial_count::indx, val);
+}
+
 bool
 xen_op_handler::xapic_handle_write(
     gsl::not_null<vcpu_t *> vcpu,
@@ -529,11 +568,17 @@ xen_op_handler::xapic_handle_write(
             this->xapic_handle_write_icr(val);
             break;
 
-        case icr_high::indx:
-        case id::indx:
-            m_vcpu->lapic_write(idx, val);
+        case lvt::timer::indx:
+            this->xapic_handle_write_lvt_timer(val);
             break;
 
+        case initial_count::indx:
+            this->xapic_handle_write_init_count(val);
+            break;
+
+
+        case icr_high::indx:
+        case id::indx:
         case tpr::indx:
         case ldr::indx:
         case dfr::indx:
@@ -743,6 +788,28 @@ xen_op_handler::xen_debug_nhex_wrmsr_handler(
     bfignored(vcpu);
 
     bfdebug_nhex(0, "debug", info.val);
+    return true;
+}
+
+bool
+xen_op_handler::handle_tsc_deadline(
+    gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::wrmsr_handler::info_t &info)
+{
+    auto next = info.val;
+    auto curr = ::x64::read_tsc::get();
+    expects(next - curr > (1ULL << m_pet_shift));
+
+    auto diff = next - curr;
+    auto pet_ticks = diff >> m_pet_shift;
+
+//    bfdebug_nhex(0, "next", next);
+//    bfdebug_nhex(0, "curr", curr);
+//    bfdebug_nhex(0, "diff", diff);
+//    bfdebug_nhex(0, "pet_ticks", pet_ticks);
+
+    m_vcpu->set_vmx_preemption_timer(pet_ticks);
+    m_vcpu->enable_vmx_preemption_timer();
+
     return true;
 }
 
@@ -1153,7 +1220,7 @@ xen_op_handler::XENVER_get_features_handler(
         info->submap |= (1 << XENFEAT_highmem_assist);
         info->submap |= (1 << XENFEAT_gnttab_map_avail_bits);
         info->submap |= (1 << XENFEAT_hvm_callback_vector);
-        info->submap |= (1 << XENFEAT_hvm_safe_pvclock);
+//        info->submap |= (1 << XENFEAT_hvm_safe_pvclock);
         info->submap |= (1 << XENFEAT_hvm_pirqs);
         info->submap |= (1 << XENFEAT_dom0);
         info->submap |= (1 << XENFEAT_memory_op_vnode_supported);
@@ -1311,14 +1378,19 @@ xen_op_handler::VCPUOP_set_singleshot_timer_handler(gsl::not_null<vcpu *> vcpu)
         auto tsc = ::x64::read_tsc::get();
         auto now = this->tsc_to_sys_time(tsc);
 
-        if ((arg->flags & VCPU_SSHOTTMR_future) && deadline < now) {
-            vcpu->set_rax(FAILURE);
-            return;
-        }
+//        if ((arg->flags & VCPU_SSHOTTMR_future) && deadline < now) {
+//            vcpu->set_rax(FAILURE);
+//            return;
+//        }
 
-        auto ns = now - deadline;
-        auto tsc_ticks = ns * (m_tsc_freq_khz / 1000000U);
+        auto us = (deadline - now) / 1000U;
+        auto tsc_ticks = us * (m_tsc_freq_khz / 1000U);
         auto pet_ticks = tsc_ticks >> m_pet_shift;
+
+//        bfdebug_nhex(0, "deadline", deadline);
+//        bfdebug_nhex(0, "now", now);
+//        bfdebug_ndec(0, "tsc_ticks", tsc_ticks);
+//        bfdebug_ndec(0, "pet_ticks", pet_ticks);
 
         m_vcpu->set_vmx_preemption_timer(pet_ticks);
         m_vcpu->enable_vmx_preemption_timer();
@@ -1340,11 +1412,10 @@ xen_op_handler::VCPUOP_register_vcpu_time_memory_area_handler(
         auto arg = vcpu->map_arg<vcpu_register_time_memory_area_t>(vcpu->rdx());
         m_time_info = vcpu->map_arg<vcpu_time_info_t>(arg->addr.v);
 
-        m_time_info->system_time = 0;
         m_time_info->flags = XEN_PVCLOCK_TSC_STABLE_BIT;
         m_time_info->tsc_to_system_mul = (GHz << 32U) / (m_tsc_freq_khz * 1000U);
         m_time_info->tsc_shift = 0;
-        m_time_info->tsc_timestamp = ::x64::read_tsc::get();
+        m_time_info->version = 0;
 
         vcpu->set_rax(SUCCESS);
     } catchall ({
@@ -1358,11 +1429,11 @@ xen_op_handler::VCPUOP_register_runstate_memory_area_handler(
 {
     try {
         expects(vcpu->rsi() == 0);
-        auto arg = vcpu->map_arg<vcpu_register_runstate_memory_area_t>(vcpu->rdx());
 
+        auto arg = vcpu->map_arg<vcpu_register_runstate_memory_area_t>(vcpu->rdx());
         m_runstate_info = vcpu->map_arg<vcpu_runstate_info_t>(arg->addr.v);
-        m_runstate_info->state_entry_time = this->tsc_to_sys_time();
         m_runstate_info->state = RUNSTATE_running;
+        m_runstate_info->time[RUNSTATE_running] = 0;
 
         vcpu->set_rax(SUCCESS);
     } catchall ({
@@ -1419,9 +1490,9 @@ xen_op_handler::HYPERVISOR_event_channel_op(gsl::not_null<vcpu *> vcpu)
     }
 
     switch (vcpu->rdi()) {
-        case EVTCHNOP_bind_virq:
-            this->EVTCHNOP_bind_virq_handler(vcpu);
-            return true;
+//        case EVTCHNOP_bind_virq:
+//            this->EVTCHNOP_bind_virq_handler(vcpu);
+//            return true;
 
         case EVTCHNOP_init_control:
             this->EVTCHNOP_init_control_handler(vcpu);
@@ -1431,8 +1502,16 @@ xen_op_handler::HYPERVISOR_event_channel_op(gsl::not_null<vcpu *> vcpu)
             this->EVTCHNOP_expand_array_handler(vcpu);
             return true;
 
-        case EVTCHNOP_set_priority:
-            this->EVTCHNOP_set_priority_handler(vcpu);
+//        case EVTCHNOP_set_priority:
+//            this->EVTCHNOP_set_priority_handler(vcpu);
+//            return true;
+
+//        case EVTCHNOP_unmask:
+//            this->EVTCHNOP_unmask_handler(vcpu);
+//            return true;
+
+        case EVTCHNOP_send:
+            this->EVTCHNOP_send_handler(vcpu);
             return true;
 
         default:
@@ -1443,18 +1522,18 @@ xen_op_handler::HYPERVISOR_event_channel_op(gsl::not_null<vcpu *> vcpu)
                              std::to_string(vcpu->rdi()));
 }
 
-void
-xen_op_handler::EVTCHNOP_bind_virq_handler(gsl::not_null<vcpu *> vcpu)
-{
-    try {
-        auto arg = vcpu->map_arg<evtchn_bind_virq_t>(vcpu->rsi());
-        m_evtchn_op->bind_virq(arg.get());
-        vcpu->set_rax(SUCCESS);
-    }
-    catchall ({
-        vcpu->set_rax(FAILURE);
-    })
-}
+//void
+//xen_op_handler::EVTCHNOP_bind_virq_handler(gsl::not_null<vcpu *> vcpu)
+//{
+//    try {
+//        auto arg = vcpu->map_arg<evtchn_bind_virq_t>(vcpu->rsi());
+//        m_evtchn_op->bind_virq(arg.get());
+//        vcpu->set_rax(SUCCESS);
+//    }
+//    catchall ({
+//        vcpu->set_rax(FAILURE);
+//    })
+//}
 
 void
 xen_op_handler::EVTCHNOP_init_control_handler(
@@ -1483,18 +1562,46 @@ xen_op_handler::EVTCHNOP_expand_array_handler(gsl::not_null<vcpu *> vcpu)
     })
 }
 
+//void
+//xen_op_handler::EVTCHNOP_set_priority_handler(gsl::not_null<vcpu *> vcpu)
+//{
+//    try {
+//        auto arg = vcpu->map_arg<evtchn_set_priority_t>(vcpu->rsi());
+//        m_evtchn_op->set_priority(arg.get());
+//        vcpu->set_rax(SUCCESS);
+//    }
+//    catchall({
+//        vcpu->set_rax(FAILURE);
+//    })
+//}
+//
+//void
+//xen_op_handler::EVTCHNOP_unmask_handler(gsl::not_null<vcpu *> vcpu)
+//{
+//    try {
+//        auto arg = vcpu->map_arg<evtchn_unmask_t>(vcpu->rsi());
+//        m_evtchn_op->unmask(arg.get());
+//        vcpu->set_rax(SUCCESS);
+//    }
+//    catchall({
+//        vcpu->set_rax(FAILURE);
+//    })
+//}
+
 void
-xen_op_handler::EVTCHNOP_set_priority_handler(gsl::not_null<vcpu *> vcpu)
+xen_op_handler::EVTCHNOP_send_handler(gsl::not_null<vcpu *> vcpu)
 {
     try {
-        auto arg = vcpu->map_arg<evtchn_set_priority_t>(vcpu->rsi());
-        m_evtchn_op->set_priority(arg.get());
+        auto arg = vcpu->map_arg<evtchn_send_t>(vcpu->rsi());
+//        m_evtchn_op->send(arg.get());
+//        vcpu->set_rax(SUCCESS);
         vcpu->set_rax(SUCCESS);
     }
     catchall({
         vcpu->set_rax(FAILURE);
     })
 }
+
 
 // -----------------------------------------------------------------------------
 // HYPERVISOR_hvm_op
@@ -1558,6 +1665,7 @@ xen_op_handler::HVMOP_set_param_handler(gsl::not_null<vcpu *> vcpu)
             case HVM_PARAM_CALLBACK_IRQ:
                 verify_callback_via(arg->value);
                 m_evtchn_op->set_callback_via(arg->value & 0xFFU);
+                bfalert_nhex(0, "callback via", arg->value);
                 vcpu->set_rax(SUCCESS);
                 break;
 
@@ -1669,14 +1777,12 @@ xen_op_handler::reset_vcpu_time_info()
 
     auto &info = m_shared_info->vcpu_info[0].time;
 
-    info.system_time = 0;
-
-    /// Constant across updates (for now)
+    info.version = 0;
     info.flags = XEN_PVCLOCK_TSC_STABLE_BIT;
     info.tsc_to_system_mul = (GHz << 32U) / (m_tsc_freq_khz * 1000U);
     info.tsc_shift = 0;
-
     info.tsc_timestamp = ::x64::read_tsc::get();
+    info.system_time = this->tsc_to_sys_time(info.tsc_timestamp);
 }
 
 static void update_time_info(gsl::not_null<vcpu_time_info_t *> info)
@@ -1693,7 +1799,8 @@ static void update_time_info(gsl::not_null<vcpu_time_info_t *> info)
     // granularity extends to the kHz level.
     //
 
-    info->version |= 1ULL;
+    info->version++;
+    ::intel_x64::barrier::wmb();
 
     const uint64_t tsc_mul = info->tsc_to_system_mul;
     const uint64_t tsc_pre = info->tsc_timestamp;
@@ -1702,7 +1809,8 @@ static void update_time_info(gsl::not_null<vcpu_time_info_t *> info)
     info->tsc_timestamp = tsc_now;
     info->system_time += (((tsc_now - tsc_pre) * tsc_mul) >> 32U);
 
-    info->version &= ~1ULL;
+    ::intel_x64::barrier::wmb();
+    info->version++;
 }
 
 void
@@ -1714,10 +1822,25 @@ xen_op_handler::update_vcpu_time_info()
 
     // TODO: we will need to calculate the offset into
     // vcpu_info once we support multiple vcpus per domain
-    update_time_info(&m_shared_info->vcpu_info[0].time);
+    auto time = &m_shared_info->vcpu_info[0].time;
+    update_time_info(time);
 
     if (GSL_LIKELY(m_time_info)) {
-        update_time_info(m_time_info.get());
+        m_time_info->version++;
+        ::intel_x64::barrier::wmb();
+
+        m_time_info->tsc_timestamp = time->tsc_timestamp;
+        m_time_info->system_time = time->system_time;
+
+        ::intel_x64::barrier::wmb();
+        m_time_info->version--;
+    }
+
+    if (GSL_LIKELY(m_runstate_info)) {
+        auto &info = m_runstate_info;
+        info->state_entry_time = time->system_time;
+        info->time[info->state] = time->system_time;
+        ::intel_x64::barrier::wmb();
     }
 }
 

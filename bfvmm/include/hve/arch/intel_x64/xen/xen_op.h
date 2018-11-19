@@ -125,6 +125,9 @@ private:
     bool xen_debug_nhex_wrmsr_handler(
         gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::wrmsr_handler::info_t &info);
 
+    bool handle_tsc_deadline(
+        gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::wrmsr_handler::info_t &info);
+
     // -------------------------------------------------------------------------
     // CPUID
     // -------------------------------------------------------------------------
@@ -197,6 +200,8 @@ private:
     void EVTCHNOP_init_control_handler(gsl::not_null<vcpu *> vcpu);
     void EVTCHNOP_expand_array_handler(gsl::not_null<vcpu *> vcpu);
     void EVTCHNOP_set_priority_handler(gsl::not_null<vcpu *> vcpu);
+    void EVTCHNOP_unmask_handler(gsl::not_null<vcpu *> vcpu);
+    void EVTCHNOP_send_handler(gsl::not_null<vcpu *> vcpu);
 
     bool HYPERVISOR_sched_op(gsl::not_null<vcpu *> vcpu);
     void SCHEDOP_yield_handler(gsl::not_null<vcpu *> vcpu);
@@ -210,6 +215,8 @@ private:
         eapis::intel_x64::ept_violation_handler::info_t &info);
 
     void xapic_handle_write_icr(uint64_t icr_low);
+    void xapic_handle_write_lvt_timer(uint64_t timer);
+    void xapic_handle_write_init_count(uint64_t val);
 
     // -------------------------------------------------------------------------
     // Helpers
@@ -235,6 +242,7 @@ private:
     uint64_t m_apic_base{};
     uint64_t m_pet_shift{};
     uint64_t m_tsc_freq_khz{};
+    uint64_t m_timer_vector{};
 
     std::unordered_map<uint32_t, uint64_t> m_msrs;
     std::unordered_map<uint64_t, eapis::x64::unique_map<uint8_t>> m_xapic_rip_cache;
