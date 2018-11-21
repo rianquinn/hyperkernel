@@ -29,6 +29,7 @@
 
 #include <hypercall.h>
 #include <gpa_layout.h>
+#include <hve/arch/intel_x64/xen/public/xen.h>
 
 #include "xen/start_info.h"
 

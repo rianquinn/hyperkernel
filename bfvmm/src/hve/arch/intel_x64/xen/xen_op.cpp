@@ -165,9 +165,6 @@ xen_op_handler::xen_op_handler(
     vcpu->pass_through_msr_access(::intel_x64::msrs::ia32_sysenter_eip::addr);
     vcpu->pass_through_msr_access(::intel_x64::msrs::ia32_sysenter_esp::addr);
 
-    EMULATE_RDMSR(0xFE, rdmsr_zero_handler);                        // MTRRs not supported
-    EMULATE_RDMSR(0x2FF, rdmsr_zero_handler);                       // MTRRs not supported
-
     vcpu->pass_through_msr_access(0x140); // Pass-through user-mode montior/mwait
 
     // We effectively pass this through to the guest already
@@ -185,6 +182,7 @@ xen_op_handler::xen_op_handler(
     EMULATE_WRMSR(0x6e0, handle_tsc_deadline);
 
     ADD_CPUID_HANDLER(0x0, cpuid_pass_through_handler);
+    ADD_CPUID_HANDLER(0x1, cpuid_leaf1_handler);
     ADD_CPUID_HANDLER(0x2, cpuid_pass_through_handler);             // Passthrough cache info
     ADD_CPUID_HANDLER(0x4, cpuid_leaf4_handler);
     ADD_CPUID_HANDLER(0x6, cpuid_leaf6_handler);
@@ -587,7 +585,6 @@ xen_op_handler::xapic_handle_write(
         case lvt::lint1::indx:
         case lvt::error::indx:
         case esr::indx:
-//            bfalert_nhex(0, "received xAPIC write @ offset:", idx << 2);
             m_vcpu->lapic_write(idx, val);
             break;
 
@@ -853,6 +850,31 @@ xen_op_handler::cpuid_leaf4_handler(
 
     return true;
 }
+
+
+bool
+xen_op_handler::cpuid_leaf1_handler(
+    gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info)
+{
+    bfignored(vcpu);
+
+    info.rcx &= ~::intel_x64::cpuid::feature_information::ecx::vmx::mask;
+    info.rcx &= ~::intel_x64::cpuid::feature_information::ecx::tm2::mask;
+    info.rcx &= ~::intel_x64::cpuid::feature_information::ecx::sdbg::mask;
+
+    info.rdx &= ~::intel_x64::cpuid::feature_information::edx::vme::mask;
+    info.rdx &= ~::intel_x64::cpuid::feature_information::edx::de::mask;
+    info.rdx &= ~::intel_x64::cpuid::feature_information::edx::mce::mask;
+    info.rdx &= ~::intel_x64::cpuid::feature_information::edx::mtrr::mask;
+    info.rdx &= ~::intel_x64::cpuid::feature_information::edx::mca::mask;
+    info.rdx &= ~::intel_x64::cpuid::feature_information::edx::ds::mask;
+    info.rdx &= ~::intel_x64::cpuid::feature_information::edx::acpi::mask;
+    info.rdx &= ~::intel_x64::cpuid::feature_information::edx::tm::mask;
+    info.rdx &= ~::intel_x64::cpuid::feature_information::edx::pbe::mask;
+
+    return true;
+}
+
 bool
 xen_op_handler::cpuid_leaf6_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info)
@@ -1100,6 +1122,10 @@ xen_op_handler::XENMEM_decrease_reservation_handler(
 
 }
 
+bool
+xen_op_handler::local_xenstore() const
+{ return m_vcpu->id() == 0x10000; }
+
 void
 xen_op_handler::XENMEM_add_to_physmap_handler(
     gsl::not_null<vcpu *> vcpu)
@@ -1120,7 +1146,9 @@ xen_op_handler::XENMEM_add_to_physmap_handler(
                     vcpu->map_gpa_4k<shared_info_t>(
                         xen_add_to_physmap_arg->gpfn << ::x64::pt::page_shift
                     );
-                this->reset_vcpu_time_info();
+                if (this->local_xenstore()) {
+                    m_shared_info->vcpu_info[0].time.pad0 = SIF_LOCAL_STORE;
+                }
                 break;
 
             case XENMAPSPACE_grant_table:

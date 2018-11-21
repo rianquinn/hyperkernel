@@ -137,6 +137,8 @@ private:
     bool cpuid_pass_through_handler(
         gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info);
 
+    bool cpuid_leaf1_handler(
+        gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info);
     bool cpuid_leaf4_handler(
         gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info);
     bool cpuid_leaf6_handler(
@@ -222,6 +224,7 @@ private:
     // Helpers
     // -------------------------------------------------------------------------
 
+    bool local_xenstore() const;
     uint64_t tsc_to_sys_time() const;
     uint64_t tsc_to_sys_time(uint64_t tsc) const;
     void reset_vcpu_time_info();

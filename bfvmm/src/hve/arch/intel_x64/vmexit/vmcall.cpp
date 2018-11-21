@@ -58,10 +58,10 @@ vmcall_handler::handle(gsl::not_null<vcpu_t *> vcpu)
 
     vcpu->advance();
 
-//    if (vcpu->id() > 0x3) {
-//        bfdebug_ndec(0, "vmcall rax", vcpu->rax());
-//        bfdebug_ndec(0, "vmcall rdi", vcpu->rdi());
-//    }
+    if (vcpu->id() > 0x3) {
+        bfdebug_ndec(0, "vmcall rax", vcpu->rax());
+        bfdebug_ndec(0, "vmcall rdi", vcpu->rdi());
+    }
 
     try {
         for (const auto &d : m_handlers) {
