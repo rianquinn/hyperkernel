@@ -174,6 +174,7 @@ xen_op_handler::xen_op_handler(
     vcpu->pass_through_msr_access(::intel_x64::msrs::platform_info::addr);
 
     EMULATE_RDMSR(0x34, rdmsr_zero_handler);
+    EMULATE_RDMSR(0x64E, rdmsr_zero_handler);
 
     EMULATE_RDMSR(::intel_x64::msrs::ia32_apic_base::addr,
                   ia32_apic_base_rdmsr_handler);
@@ -529,14 +530,12 @@ xen_op_handler::xapic_handle_write_lvt_timer(uint64_t val)
     switch (mode) {
         case lvt::timer::mode::one_shot:
             m_vcpu->lapic_write(lvt::timer::indx, val);
-            bfalert_info(0, "Timer: one_shot");
             break;
 
         case lvt::timer::mode::tsc_deadline:
             m_vcpu->lapic_write(lvt::timer::indx, val);
             m_tsc_vector = lvt::timer::vector::get(val);
             ADD_VMX_PET_HANDLER(handle_vmx_pet);
-            bfalert_info(0, "Timer: tsc_deadline");
             break;
 
         default:

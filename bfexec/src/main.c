@@ -446,10 +446,9 @@ reserved_8000_t *g_reserved_8000 = 0;   /* Xen store */
 //reserved_9000_t *g_reserved_9000 = 0;   /* 4K hole for DSDT */
 reserved_A000_t *g_reserved_A000 = 0;   /* Real-mode trampoline */
 
-// TODO: sanity check this size against the size of vmlinux
 // TODO: this should be a setting that is filled in from the command line.
 uint64_t g_ram_addr = 0x1000000;
-uint64_t g_ram_size = 0x20000000;
+uint64_t g_ram_size = 0x3F0 << 20;
 
 void *g_zero_page;
 

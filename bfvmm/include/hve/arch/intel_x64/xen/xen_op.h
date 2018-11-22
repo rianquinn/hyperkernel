@@ -241,7 +241,7 @@ private:
 private:
 
 #ifndef MIN_TSC_TICKS
-#define MIN_TSC_TICKS 500000
+#define MIN_TSC_TICKS 20000
 #endif
 
 #ifndef MIN_EXIT_TICKS
