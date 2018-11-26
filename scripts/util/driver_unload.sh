@@ -1,6 +1,7 @@
+#!/bin/bash -e
 #
-# Bareflank Hypervisor
-# Copyright (C) 2015 Assured Information Security, Inc.
+# Bareflank Hyperkernel
+# Copyright (C) 2018 Assured Information Security, Inc.
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
@@ -16,23 +17,15 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-cmake_minimum_required(VERSION 3.6)
-project(bfexec C CXX)
-
-include(${SOURCE_CMAKE_DIR}/project.cmake)
-init_project(
-    INCLUDES ${CMAKE_CURRENT_LIST_DIR}/../bfvmm/include
-    INCLUDES ${CMAKE_CURRENT_LIST_DIR}/../bfsdk/include
-    INCLUDES ${CMAKE_CURRENT_LIST_DIR}/../include
-)
-
-list(APPEND SOURCES
-    src/main.c
-    src/linux/platform.c
-)
-
-add_executable(bfexec ${SOURCES})
-target_link_static_libraries(bfexec bfintrinsics)
-target_link_libraries(bfexec pthread)
-
-install(TARGETS bfexec DESTINATION bin)
+case $(uname -s) in
+CYGWIN_NT*)
+    >&2 /cygdrive/c/Program\ Files\ \(x86\)/Windows\ Kits/10/Tools/x64/devcon remove "ROOT\bareflank"
+    ;;
+Linux)
+    cd $1/src/platform/linux
+    sudo make unload 1> /dev/null 2> /dev/null
+    ;;
+*)
+    >&2 echo "OS not supported"
+    exit 1
+esac

@@ -18,6 +18,7 @@
 
 #include <intrinsics.h>
 
+#include <hve/arch/intel_x64/lapic.h>
 #include <hve/arch/intel_x64/vcpu.h>
 #include <hve/arch/intel_x64/fault.h>
 
@@ -292,13 +293,21 @@ vcpu::is_killed() const
 // LAPIC
 //------------------------------------------------------------------------------
 
-uint64_t
+uint32_t
 vcpu::lapicid() const
 { return m_lapic.id(); }
 
 uint64_t
 vcpu::lapic_base() const
 { return m_lapic.base(); }
+
+uint32_t
+vcpu::lapic_read(uint32_t indx) const
+{ return m_lapic.read(indx); }
+
+void
+vcpu::lapic_write(uint32_t indx, uint32_t val)
+{ m_lapic.write(indx, val); }
 
 //------------------------------------------------------------------------------
 // Resources
@@ -308,20 +317,8 @@ std::vector<e820_entry_t> &
 vcpu::e820_map()
 { return m_domain->e820_map(); }
 
-//------------------------------------------------------------------------------
-// Scheduling
-//------------------------------------------------------------------------------
-
-void
-vcpu::schedule_enqueue(gsl::not_null<vcpu *> vcpu)
-{ m_schedule_queue.push(vcpu); }
-
-void
-vcpu::schedule_dequeue()
-{ m_schedule_queue.pop(); }
-
-gsl::not_null<vcpu *>
-vcpu::schedule_next() const
-{ return m_schedule_queue.front(); }
+domain *
+vcpu::dom()
+{ return m_domain; }
 
 }

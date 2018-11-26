@@ -1,5 +1,5 @@
 #
-# Bareflank Hypervisor
+# Bareflank Hyperkernel
 # Copyright (C) 2018 Assured Information Security, Inc.
 #
 # This library is free software; you can redistribute it and/or
@@ -15,6 +15,18 @@
 # You should have received a copy of the GNU Lesser General Public
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
+# ------------------------------------------------------------------------------
+# Config
+# ------------------------------------------------------------------------------
+
+include(${CMAKE_CURRENT_LIST_DIR}/scripts/cmake/config/default.cmake)
+
+# ------------------------------------------------------------------------------
+# Targets
+# ------------------------------------------------------------------------------
+
+include(${HK_CMAKE_DIR}/targets.cmake)
 
 # ------------------------------------------------------------------------------
 # VMM Components

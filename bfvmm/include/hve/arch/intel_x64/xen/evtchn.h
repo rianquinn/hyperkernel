@@ -50,16 +50,15 @@ class EXPORT_HYPERKERNEL_HVE evtchn
 public:
 
     enum state : uint8_t {
-        free,
-        reserved,
-        unbound,
-        interdomain,
-        pirq,
-        virq,
-        ipi
+        state_free,
+        state_reserved,
+        state_unbound,
+        state_interdomain,
+        state_pirq,
+        state_virq,
+        state_ipi
     };
 
-    /// Constructor
     ///
     /// @expects
     /// @ensures
@@ -94,6 +93,9 @@ public:
     inline auto port() const
     { return m_port; }
 
+    inline auto virq() const
+    { return m_ed.virq; }
+
     inline auto set_pending()
     { m_is_pending = true; }
 
@@ -118,10 +120,21 @@ public:
     inline auto clear_pending()
     { m_is_pending = false; }
 
+    inline auto set_virq(uint32_t virq)
+    { m_ed.virq = virq; }
+
 private:
 
+    union evt_data {
+        uint32_t virq;
+        // TODO:
+        // unbound-specific data
+        // interdomain-specific data
+        // pirq-specific data
+    } m_ed;
+
     bool m_is_pending{};
-    enum state m_state{free};
+    enum state m_state{state_free};
 
     uint8_t m_priority{EVTCHN_FIFO_PRIORITY_DEFAULT};
     uint8_t m_prev_priority{EVTCHN_FIFO_PRIORITY_DEFAULT};
@@ -145,19 +158,25 @@ public:
     /// @endcond
 };
 
-constexpr auto is_power_of_two(size_t val)
-{ return (val > 0) && ((val & (val - 1)) == 0); }
+constexpr auto is_power_of_2(size_t n)
+{ return (n > 0) && ((n & (n - 1)) == 0); }
 
-constexpr auto next_power_of_two(size_t val)
+constexpr auto next_power_of_2(size_t n)
 {
-    while (!is_power_of_two(val)) {
-        val++;
+    while (!is_power_of_2(n)) {
+        n++;
     }
-    return val;
+    return n;
 }
 
-constexpr auto evtchn_size = next_power_of_two(sizeof(class evtchn));
-constexpr auto evtchn_per_page = ::x64::pt::page_size / evtchn_size;
+constexpr auto log2(const size_t n)
+{
+    for (auto i = 0; i < 64; i++) {
+        if (((1ULL << i) & n) == n) {
+            return i;
+        }
+    }
+}
 
 }
 

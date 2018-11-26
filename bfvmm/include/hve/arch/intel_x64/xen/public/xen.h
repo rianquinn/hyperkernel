@@ -854,6 +854,7 @@ typedef struct start_info start_info_t;
 #define SIF_MULTIBOOT_MOD (1<<2)  /* Is mod_start a multiboot module? */
 #define SIF_MOD_START_PFN (1<<3)  /* Is mod_start a PFN? */
 #define SIF_VIRT_P2M_4TOOLS (1<<4) /* Do Xen tools understand a virt. mapped */
+#define SIF_LOCAL_STORE (1<<5)     /* Is xenstore local to this domain? */
                                    /* P->M making the 3 level tree obsolete? */
 #define SIF_PM_MASK       (0xFF<<8) /* reserve 1 byte for xen-pm options */
 

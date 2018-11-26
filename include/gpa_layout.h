@@ -20,11 +20,13 @@
 #define GPA_LAYOUT_H
 
 #define CONSOLE_GPA         0x07000
+#define STORE_GPA           0x08000
 
 #define ACPI_RSDP_GPA       0xE0000
 #define ACPI_XSDT_GPA       0xE1000
 #define ACPI_MADT_GPA       0xE2000
 #define ACPI_FADT_GPA       0xE3000
+#define ACPI_DSDT_GPA       0x9000
 
 #define LAPIC_GPA           0xFEE00000
 

@@ -18,14 +18,14 @@
 
 #include <iostream>
 #include <hve/arch/intel_x64/vcpu.h>
+#include <hve/arch/intel_x64/lapic.h>
 #include <eapis/hve/arch/intel_x64/time.h>
-#include <Zydis/Zydis.h>
 
 #include <hve/arch/intel_x64/xen/public/xen.h>
 #include <hve/arch/intel_x64/xen/public/event_channel.h>
 #include <hve/arch/intel_x64/xen/public/memory.h>
-#include <hve/arch/intel_x64/xen/public/memory.h>
 #include <hve/arch/intel_x64/xen/public/version.h>
+#include <hve/arch/intel_x64/xen/public/vcpu.h>
 #include <hve/arch/intel_x64/xen/public/hvm/hvm_op.h>
 #include <hve/arch/intel_x64/xen/public/hvm/params.h>
 #include <hve/arch/intel_x64/xen/public/arch-x86/cpuid.h>
@@ -46,6 +46,9 @@ constexpr auto xen_msr_hypercall_page   = 0xC0000500;
 constexpr auto xen_msr_debug_ndec       = 0xC0000600;
 constexpr auto xen_msr_debug_nhex       = 0xC0000700;
 
+constexpr auto GHz = 1000000000ULL;
+constexpr auto MHz = 1000000ULL;
+
 // =============================================================================
 // Macros
 // =============================================================================
@@ -60,6 +63,10 @@ constexpr auto xen_msr_debug_nhex       = 0xC0000700;
 #define ADD_CPUID_HANDLER(a,b)                                                                      \
     m_vcpu->add_cpuid_handler(                                                                      \
         a, make_delegate(cpuid_handler, b))
+
+#define ADD_RDMSR_HANDLER(a,b)                                                                      \
+    m_vcpu->add_rdmsr_handler(                                                                      \
+        a, make_delegate(rdmsr_handler, b))
 
 #define EMULATE_CPUID(a,b)                                                                          \
     m_vcpu->emulate_cpuid(                                                                          \
@@ -81,6 +88,15 @@ constexpr auto xen_msr_debug_nhex       = 0xC0000700;
     m_vcpu->emulate_io_instruction(                                                                 \
         a, make_delegate(io_instruction_handler, b), make_delegate(io_instruction_handler, c))
 
+#define ADD_EPT_WRITE_HANDLER(b)                                                                    \
+    m_vcpu->add_ept_write_violation_handler(make_delegate(ept_violation_handler, b))
+
+#define ADD_EPT_READ_HANDLER(b)                                                                     \
+    m_vcpu->add_ept_read_violation_handler(make_delegate(ept_violation_handler, b))
+
+#define ADD_VMX_PET_HANDLER(b) \
+    m_vcpu->add_vmx_preemption_timer_handler(make_delegate(vmx_preemption_timer_handler, b))
+
 // =============================================================================
 // Implementation
 // =============================================================================
@@ -94,7 +110,8 @@ xen_op_handler::xen_op_handler(
     gsl::not_null<vcpu *> vcpu
 ) :
     m_vcpu{vcpu},
-    m_evtchn_op{std::make_unique<evtchn_op>(vcpu, this)}
+    m_evtchn_op{std::make_unique<evtchn_op>(vcpu, this)},
+    m_gnttab_op{std::make_unique<gnttab_op>(vcpu, this)}
 {
     using namespace vmcs_n;
 
@@ -117,8 +134,11 @@ xen_op_handler::xen_op_handler(
 
     ADD_VMCALL_HANDLER(HYPERVISOR_memory_op);
     ADD_VMCALL_HANDLER(HYPERVISOR_xen_version);
+    ADD_VMCALL_HANDLER(HYPERVISOR_grant_table_op);
+    ADD_VMCALL_HANDLER(HYPERVISOR_vm_assist);
     ADD_VMCALL_HANDLER(HYPERVISOR_hvm_op);
     ADD_VMCALL_HANDLER(HYPERVISOR_event_channel_op);
+    ADD_VMCALL_HANDLER(HYPERVISOR_vcpu_op);
     // ADD_VMCALL_HANDLER(HYPERVISOR_sched_op);
 
     if (vcpu->is_domU()) {
@@ -137,6 +157,8 @@ xen_op_handler::xen_op_handler(
         return;
     }
 
+    primary_processor_based_vm_execution_controls::use_tsc_offsetting::enable();
+
     vcpu->pass_through_msr_access(::x64::msrs::ia32_pat::addr);
     vcpu->pass_through_msr_access(::intel_x64::msrs::ia32_efer::addr);
     vcpu->pass_through_msr_access(::intel_x64::msrs::ia32_fs_base::addr);
@@ -145,35 +167,74 @@ xen_op_handler::xen_op_handler(
     vcpu->pass_through_msr_access(::intel_x64::msrs::ia32_sysenter_eip::addr);
     vcpu->pass_through_msr_access(::intel_x64::msrs::ia32_sysenter_esp::addr);
 
-    EMULATE_RDMSR(0xFE, rdmsr_zero_handler);                        // MTRRs not supported
-    EMULATE_RDMSR(0x2FF, rdmsr_zero_handler);                       // MTRRs not supported
+    vcpu->pass_through_msr_access(0x140); // Pass-through user-mode montior/mwait
+
+    // We effectively pass this through to the guest already
+    // through the eapis::intel_x64::timer::tsc_freq_MHz
+    vcpu->pass_through_msr_access(::intel_x64::msrs::platform_info::addr);
+
+    EMULATE_RDMSR(0x34, rdmsr_zero_handler);
 
     EMULATE_RDMSR(::intel_x64::msrs::ia32_apic_base::addr,
-                  ia32_apic_base_rdmsr_handler);                    // TODO: use namespace name
+                  ia32_apic_base_rdmsr_handler);
 
     EMULATE_WRMSR(::intel_x64::msrs::ia32_apic_base::addr,
-                  ia32_apic_base_wrmsr_handler);                    // TODO: use namespace name
+                  ia32_apic_base_wrmsr_handler);
 
-    EMULATE_RDMSR(0x1A0, ia32_misc_enable_rdmsr_handler);           // TODO: use namespace name
+    ADD_RDMSR_HANDLER(0x1A0, ia32_misc_enable_rdmsr_handler);       // TODO: use namespace name
     EMULATE_WRMSR(0x1A0, ia32_misc_enable_wrmsr_handler);           // TODO: use namespace name
+    EMULATE_WRMSR(0x6e0, handle_tsc_deadline);
 
-    ADD_CPUID_HANDLER(0, cpuid_pass_through_handler);
+    ADD_CPUID_HANDLER(0x0, cpuid_pass_through_handler);
+    ADD_CPUID_HANDLER(0x1, cpuid_leaf1_handler);
+    ADD_CPUID_HANDLER(0x2, cpuid_pass_through_handler);             // Passthrough cache info
+    ADD_CPUID_HANDLER(0x4, cpuid_leaf4_handler);
     ADD_CPUID_HANDLER(0x6, cpuid_leaf6_handler);
     ADD_CPUID_HANDLER(0x7, cpuid_leaf7_handler);
+
+    EMULATE_CPUID(0xA, cpuid_zero_handler);
     EMULATE_CPUID(0xD, cpuid_zero_handler);
     EMULATE_CPUID(0xF, cpuid_zero_handler);
     EMULATE_CPUID(0x10, cpuid_zero_handler);
+
+    ADD_CPUID_HANDLER(0x15, cpuid_pass_through_handler);            // TODO: 0 reserved bits
     ADD_CPUID_HANDLER(0x16, cpuid_pass_through_handler);            // TODO: 0 reserved bits
     ADD_CPUID_HANDLER(0x80000000, cpuid_pass_through_handler);      // TODO: 0 reserved bits
     ADD_CPUID_HANDLER(0x80000001, cpuid_leaf80000001_handler);      // TODO: 0 reserved bits
+
+    ADD_CPUID_HANDLER(0x80000002, cpuid_pass_through_handler);      // brand str cont. TODO: 0 reserved bits
+    ADD_CPUID_HANDLER(0x80000003, cpuid_pass_through_handler);      // brand str cont. TODO: 0 reserved bits
+    ADD_CPUID_HANDLER(0x80000004, cpuid_pass_through_handler);      // brand str cont. TODO: 0 reserved bits
+
     ADD_CPUID_HANDLER(0x80000007, cpuid_pass_through_handler);      // TODO: 0 reserved bits
     ADD_CPUID_HANDLER(0x80000008, cpuid_pass_through_handler);      // TODO: 0 reserved bits
 
     EMULATE_IO_INSTRUCTION(0xCF8, io_ones_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(0xCFA, io_ones_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(0xCFB, io_ones_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0xCFC, io_ones_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0xCFD, io_ones_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0xCFE, io_ones_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0xCFF, io_ones_handler, io_ignore_handler);
+
+    /// ACPI SCI interrupt trigger mode
+    EMULATE_IO_INSTRUCTION(0x4D0, io_zero_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(0x4D1, io_zero_handler, io_ignore_handler);
+
+    /// NMI assertion
+    EMULATE_IO_INSTRUCTION(0x70, io_zero_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(0x71, io_zero_handler, io_ignore_handler);
+
+    /// TODO: figure out what this one is for
+    EMULATE_IO_INSTRUCTION(0x3fe, io_zero_handler, io_ignore_handler);
+
+    /// Ports used for TSC calibration against the PIT. See
+    /// arch/x86/kernel/tsc.c:pit_calibrate_tsc for detail.
+    /// Note that these ports are accessed on the Intel NUC.
+    ///
+    vcpu->pass_through_io_accesses(0x42);
+    vcpu->pass_through_io_accesses(0x43);
+    vcpu->pass_through_io_accesses(0x61);
 
     this->register_unplug_quirk();
 
@@ -192,7 +253,10 @@ xen_op_handler::xen_op_handler(
     vcpu->pass_through_io_accesses(0x3fc);
     vcpu->pass_through_io_accesses(0x3fd);
 
-    // m_sched_op = std::make_unique<sched_op>(vcpu, tsc_frequency());
+    ADD_EPT_WRITE_HANDLER(xapic_handle_write);
+    EMULATE_CPUID(0xBF00, cpuid_ack_handler);
+
+    m_pet_shift = ::intel_x64::msrs::ia32_vmx_misc::preemption_timer_decrement::get();
 }
 
 static uint64_t
@@ -237,55 +301,30 @@ tsc_frequency(void)
 
 
     if (denominator == 0 || numerator == 0) {
-        throw std::runtime_error("unsupported system: missing TSC ratio");
-    }
-
-    bfdebug_ndec(0, "TSC ratio", numerator / denominator);
-    bfdebug_ndec(0, "TSC (kHz)", 24000 * numerator / denominator);
-
-    if (freq == 0) {
-        //
-        // We need the display family here, not the family id.
-        // See
-        //      eapis/bfvmm/src/hve/arch/intel_x64/cpuid.cpp
-        //      eapis/bfvmm/include/hve/arch/intel_x64/{time,cpuid}.h
-        //
-        // for details; display family is a function of family id
-        //
-//        switch (feature_information::eax::family_id::get()) {
-//            case 0x4E:  // Skylake Mobile
-//            case 0x5E:  // Skylake Desktop
-//            case 0x8E:  // Kabylake Mobile
-//            case 0x9E:  // Kabylake Desktop
-//                freq = 24000;
-//                break;
-//
-//            case 0x5F:  // Atom Denverton
-//                freq = 25000;
-//                break;
-//
-//            case 0x5C:  // Atom Goldmont
-//                freq = 19200;
-//                break;
-//
-//            default:
-//                throw std::runtime_error("unsupported system: unknown freq");
-//        }
-
         auto bus = eapis::intel_x64::time::bus_freq_MHz();
         auto tsc = eapis::intel_x64::time::tsc_freq_MHz(bus);
-//        auto pet = eapis::intel_x64::time::pet_freq_MHz(tsc);
-
-//        bfdebug_ndec(0, "TSC (kHz)", tsc * 1000);
-//        bfdebug_ndec(0, "PET (kHz)", pet * 1000);
-
         return tsc * 1000;
     }
-    else {
-        freq /= 1000;
+
+    if (freq == 0) {
+        auto bus = eapis::intel_x64::time::bus_freq_MHz();
+        auto tsc = eapis::intel_x64::time::tsc_freq_MHz(bus);
+        return tsc * 1000;
     }
 
+    freq /= 1000;
     return freq * numerator / denominator;
+}
+
+bool
+xen_op_handler::handle_vmx_pet(gsl::not_null<vcpu_t *> vcpu)
+{
+    bfignored(vcpu);
+
+    m_vcpu->queue_external_interrupt(m_tsc_vector);
+    m_vcpu->disable_vmx_preemption_timer();
+
+    return true;
 }
 
 void
@@ -296,8 +335,6 @@ xen_op_handler::run_delegate(bfobject *obj)
     // Note that this function is executed on every entry, so we want to
     // limit what we are doing here. This is an expensive function to
     // execute.
-
-    this->update_vcpu_time_info();
 
     // Note:
     //
@@ -336,6 +373,14 @@ xen_op_handler::run_delegate(bfobject *obj)
             ::x64::msrs::set(msr.first, msr.second);
         }
     }
+
+    // TODO: must reset tsc state on resume etc.
+    // this assumes this vcpu is pinned and that lost_ticks > 0
+    //
+    if (GSL_LIKELY(m_tsc_exit)) {
+        m_tsc_lost += ::x64::read_tsc::get() - m_tsc_exit + min_exit_ticks;
+        ::intel_x64::vmcs::tsc_offset::set(m_tsc_lost * -1);
+    }
 }
 
 bool
@@ -351,10 +396,224 @@ xen_op_handler::exit_handler(
     // Should we add this to the exit/entry asm glue? - CD
 
     using namespace ::x64::msrs;
+    using namespace ::intel_x64::vmcs;
+
     m_msrs[ia32_kernel_gs_base::addr] = ia32_kernel_gs_base::get();
+    m_tsc_exit = ::x64::read_tsc::get();
+    m_tsc_lost += min_exit_ticks;
 
     // Ignored
     return false;
+}
+
+// -----------------------------------------------------------------------------
+// xAPIC
+// -----------------------------------------------------------------------------
+
+//bool
+//xen_op_handler::xapic_handle_read(
+//    gsl::not_null<vcpu_t *> vcpu,
+//    eapis::intel_x64::ept_violation_handler::info_t &info)
+//{
+////    auto hkv = vcpu_cast(vcpu);
+////    if (bfn::upper(info.gpa) != hkv->lapic_base()) {
+////        return false;
+////    }
+////
+////    auto idx = bfn::lower(info.gpa) >> 2;
+////    bfdebug_nhex(0, "xapic read", idx << 2);
+////    bfdebug_subnhex(0, "val", m_vcpu->lapic_read(idx));
+////
+////    const auto len = ::intel_x64::vmcs::vm_exit_instruction_length::get();
+////    const auto rip = ::intel_x64::vmcs::guest_rip::get();
+////
+////    auto itr = m_xapic_rip_cache.find(rip);
+////    if (itr == m_xapic_rip_cache.end()) {
+////        auto ump = hkv->map_gva_4k<uint8_t>(rip, len);
+////        if (!ump) {
+////            throw std::runtime_error("handle_xapic_write::map_gva_4k failed");
+////        }
+////
+////        m_xapic_rip_cache[rip] = std::move(ump);
+////        itr = m_xapic_rip_cache.find(rip);
+////    }
+////
+////    const auto buf = itr->second.get();
+////    printf("received xapic insn: ");
+////    for (auto i = 0; i < len; i++) {
+////        printf("%02x", buf[i]);
+////    }
+////    printf("\n");
+//
+//    return false;
+//}
+
+uint64_t
+src_op_value(gsl::not_null<vcpu_t *> vcpu, int64_t src_op)
+{
+    switch (src_op) {
+        case hyperkernel::intel_x64::insn_decoder::eax:
+            return vcpu->rax() & 0xFFFFFFFFU;
+        case hyperkernel::intel_x64::insn_decoder::ecx:
+            return vcpu->rcx() & 0xFFFFFFFFU;
+        case hyperkernel::intel_x64::insn_decoder::edx:
+            return vcpu->rdx() & 0xFFFFFFFFU;
+        case hyperkernel::intel_x64::insn_decoder::ebx:
+            return vcpu->rbx() & 0xFFFFFFFFU;
+        case hyperkernel::intel_x64::insn_decoder::esp:
+            return vcpu->rsp() & 0xFFFFFFFFU;
+        case hyperkernel::intel_x64::insn_decoder::ebp:
+            return vcpu->rbp() & 0xFFFFFFFFU;
+        case hyperkernel::intel_x64::insn_decoder::esi:
+            return vcpu->rsi() & 0xFFFFFFFFU;
+        case hyperkernel::intel_x64::insn_decoder::edi:
+            return vcpu->rdi() & 0xFFFFFFFFU;
+    }
+
+    throw std::invalid_argument("invalid reg");
+}
+
+static void print_insn(const unsigned char *buf, size_t len)
+{
+    for (auto i = 0; i < len; i++) {
+        printf("%02x", buf[i]);
+    }
+}
+
+void
+xen_op_handler::xapic_handle_write_icr(uint64_t low)
+{
+    using namespace eapis::intel_x64::lapic;
+
+    const auto dlm = icr_low::delivery_mode::get(low);
+    switch (dlm) {
+        case icr_low::delivery_mode::fixed:
+            break;
+
+        default:
+            bfalert_nhex(0, "unsupported delivery mode:", dlm);
+            return;
+    }
+
+    auto dsh = icr_low::dest_shorthand::get(low);
+    switch (dsh) {
+        case icr_low::dest_shorthand::self:
+            m_vcpu->queue_external_interrupt(icr_low::vector::get(low));
+            m_vcpu->lapic_write(icr_low::indx, low);
+            break;
+
+        default:
+            bfalert_nhex(0, "unsupported dest shorthand: ", dsh);
+            break;
+    }
+}
+
+void
+xen_op_handler::xapic_handle_write_lvt_timer(uint64_t val)
+{
+    using namespace eapis::intel_x64::lapic;
+
+    auto mode = lvt::timer::mode::get(val);
+    switch (mode) {
+        case lvt::timer::mode::one_shot:
+            m_vcpu->lapic_write(lvt::timer::indx, val);
+            bfalert_info(0, "Timer: one_shot");
+            break;
+
+        case lvt::timer::mode::tsc_deadline:
+            m_vcpu->lapic_write(lvt::timer::indx, val);
+            m_tsc_vector = lvt::timer::vector::get(val);
+            ADD_VMX_PET_HANDLER(handle_vmx_pet);
+            bfalert_info(0, "Timer: tsc_deadline");
+            break;
+
+        default:
+            throw std::runtime_error("Unsupported LVT timer mode: " +
+                                     std::to_string(mode));
+    }
+}
+
+void
+xen_op_handler::xapic_handle_write_init_count(uint64_t val)
+{
+    using namespace eapis::intel_x64::lapic;
+    m_vcpu->lapic_write(initial_count::indx, val);
+}
+
+bool
+xen_op_handler::xapic_handle_write(
+    gsl::not_null<vcpu_t *> vcpu,
+    eapis::intel_x64::ept_violation_handler::info_t &info)
+{
+    using namespace eapis::intel_x64::lapic;
+
+    auto hkv = vcpu_cast(vcpu);
+    if (bfn::upper(info.gpa) != hkv->lapic_base()) {
+        return false;
+    }
+
+    const auto idx = bfn::lower(info.gpa) >> 2;
+    if (idx == eoi::indx) {
+        info.ignore_advance = false;
+        return true;
+    }
+
+    const auto len = ::intel_x64::vmcs::vm_exit_instruction_length::get();
+    const auto rip = ::intel_x64::vmcs::guest_rip::get();
+
+    auto itr = m_xapic_rip_cache.find(rip);
+    if (itr == m_xapic_rip_cache.end()) {
+        auto ump = hkv->map_gva_4k<uint8_t>(rip, len);
+        if (!ump) {
+            throw std::runtime_error("handle_xapic_write::map_gva_4k failed");
+        }
+
+        m_xapic_rip_cache[rip] = std::move(ump);
+        itr = m_xapic_rip_cache.find(rip);
+    }
+
+    const auto buf = itr->second.get();
+
+//    printf("xapic_write: ");
+//    print_insn(buf, len);
+
+    hyperkernel::intel_x64::insn_decoder dec(buf, len);
+    const auto val = src_op_value(vcpu, dec.src_op());
+//    printf(" value: 0x%08lx\n", val);
+
+    switch (idx) {
+        case icr_low::indx:
+            this->xapic_handle_write_icr(val);
+            break;
+
+        case lvt::timer::indx:
+            this->xapic_handle_write_lvt_timer(val);
+            break;
+
+        case initial_count::indx:
+            this->xapic_handle_write_init_count(val);
+            break;
+
+        case icr_high::indx:
+        case id::indx:
+        case tpr::indx:
+        case ldr::indx:
+        case dfr::indx:
+        case svr::indx:
+        case lvt::lint0::indx:
+        case lvt::lint1::indx:
+        case lvt::error::indx:
+        case esr::indx:
+            m_vcpu->lapic_write(idx, val);
+            break;
+
+        default:
+            bfalert_nhex(0, "unhandled xapic write indx:", idx);
+            return false;
+    }
+
+    info.ignore_advance = false;
+    return true;
 }
 
 // -----------------------------------------------------------------------------
@@ -427,9 +686,27 @@ xen_op_handler::ia32_misc_enable_rdmsr_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::rdmsr_handler::info_t &info)
 {
     bfignored(vcpu);
-    using namespace ::intel_x64::msrs;
+    using namespace ::intel_x64::msrs::ia32_misc_enable;
 
-    info.val = 0;
+    // Pass through
+    // - fast strings
+    // - monitor FSM
+    // - xd bit disable
+    //
+    // and disable everything else for now
+    //
+    auto_therm_control::disable(info.val);
+    perf_monitor::disable(info.val);
+    branch_trace_storage::disable(info.val);
+    processor_sampling::disable(info.val);
+    intel_speedstep::disable(info.val);
+    limit_cpuid_maxval::disable(info.val);
+    xtpr_message::disable(info.val);
+
+    // Clear reserved bits
+    //
+    info.val &= ~0xFFFFFFFBFF3AE776U;
+
     return true;
 }
 
@@ -451,19 +728,33 @@ xen_op_handler::ia32_apic_base_rdmsr_handler(
 
     auto val = m_vcpu->lapic_base();
     ::intel_x64::msrs::ia32_apic_base::bsp::enable(val);
+    m_apic_base = val;
     info.val = val;
 
     return true;
 }
 
+// We can't use x2apic with a linux domU unless we disable
+// XENFEAT_hvm_pirqs and XENFEAT_hvm_callback_via
+//
 bool
 xen_op_handler::ia32_apic_base_wrmsr_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::wrmsr_handler::info_t &info)
 {
+    using namespace ::intel_x64::msrs::ia32_apic_base;
     bfignored(vcpu);
-    bfignored(info);
 
-    return false;
+    switch (state::get(info.val)) {
+        case state::xapic:
+            break;
+        default:
+            bfalert_info(0, "Unhandled LAPIC state change");
+            dump(0, info.val);
+            return false;
+    }
+
+    m_apic_base = info.val;
+    return true;
 }
 
 static void
@@ -516,9 +807,36 @@ xen_op_handler::xen_debug_nhex_wrmsr_handler(
     return true;
 }
 
+bool
+xen_op_handler::handle_tsc_deadline(
+    gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::wrmsr_handler::info_t &info)
+{
+    auto vtsc = ::x64::read_tsc::get() - m_tsc_lost;
+    auto vtsc_deadline = info.val;
+
+    if (vtsc_deadline - vtsc > min_tsc_ticks) {
+        m_pet_ticks = (vtsc_deadline - vtsc) >> m_pet_shift;
+    } else {
+        m_pet_ticks = min_tsc_ticks >> m_pet_shift;
+    }
+
+    m_vcpu->set_vmx_preemption_timer(m_pet_ticks);
+    m_vcpu->enable_vmx_preemption_timer();
+
+    return true;
+}
+
 // -----------------------------------------------------------------------------
 // CPUID
 // -----------------------------------------------------------------------------
+
+bool
+xen_op_handler::cpuid_ack_handler(
+    gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info)
+{
+    bfdebug_nhex(0, "ack received", vcpu->rax());
+    return true;
+}
 
 bool
 xen_op_handler::cpuid_zero_handler(
@@ -540,6 +858,45 @@ xen_op_handler::cpuid_pass_through_handler(
 {
     bfignored(vcpu);
     bfignored(info);
+
+    return true;
+}
+
+bool
+xen_op_handler::cpuid_leaf4_handler(
+    gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info)
+{
+    using namespace ::intel_x64::cpuid::cache_parameters::eax;
+    bfignored(vcpu);
+
+    info.rax &= ~max_ids_logical::mask;
+    info.rax &= ~max_ids_physical::mask;
+
+    return true;
+}
+
+
+bool
+xen_op_handler::cpuid_leaf1_handler(
+    gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info)
+{
+    bfignored(vcpu);
+
+    info.rcx &= ~::intel_x64::cpuid::feature_information::ecx::vmx::mask;
+    info.rcx &= ~::intel_x64::cpuid::feature_information::ecx::tm2::mask;
+    info.rcx &= ~::intel_x64::cpuid::feature_information::ecx::sdbg::mask;
+    info.rcx &= ~::intel_x64::cpuid::feature_information::ecx::xsave::mask;
+    info.rcx &= ~::intel_x64::cpuid::feature_information::ecx::osxsave::mask;
+
+    info.rdx &= ~::intel_x64::cpuid::feature_information::edx::vme::mask;
+    info.rdx &= ~::intel_x64::cpuid::feature_information::edx::de::mask;
+    info.rdx &= ~::intel_x64::cpuid::feature_information::edx::mce::mask;
+    info.rdx &= ~::intel_x64::cpuid::feature_information::edx::mtrr::mask;
+    info.rdx &= ~::intel_x64::cpuid::feature_information::edx::mca::mask;
+    info.rdx &= ~::intel_x64::cpuid::feature_information::edx::ds::mask;
+    info.rdx &= ~::intel_x64::cpuid::feature_information::edx::acpi::mask;
+    info.rdx &= ~::intel_x64::cpuid::feature_information::edx::tm::mask;
+    info.rdx &= ~::intel_x64::cpuid::feature_information::edx::pbe::mask;
 
     return true;
 }
@@ -572,6 +929,7 @@ xen_op_handler::cpuid_leaf7_handler(
     //
     // EBX:
     // - SGX                no plans to support
+    // - TSC_ADJUST         need to properly emulate TSC offsetting
     // - AVX2               need to properly emulate XSAVE/XRESTORE
     // - INVPCID            need to properly emulate PCID
     // - RTM                no plans to support
@@ -596,6 +954,7 @@ xen_op_handler::cpuid_leaf7_handler(
     // - PKU                ??? Might be able to support, not sure
     // - OSPKE              ??? Might be able to support, not sure
     // - MAWAU              no plans to support
+    // - TSC_AUX            need to properly emulate TSC offsetting
     // - SGX_LC             no plans to support
 
     if (info.rcx != 0) {
@@ -606,8 +965,8 @@ xen_op_handler::cpuid_leaf7_handler(
     }
 
     info.rax = 1U;
-    info.rbx &= 0x19C23DBU;
-    info.rcx &= 0x0400000U;
+    info.rbx &= 0x19C23D9U;
+    info.rcx &= 0U;
     info.rdx = 0U;
 
     return true;
@@ -623,10 +982,11 @@ xen_op_handler::cpuid_leaf80000001_handler(
     //
     // EDX:
     // - 1-GByte Pages      no plans to support
+    // - TSC_AUX            need to properly emulate TSC offsetting
 
     info.rbx = 0U;
     info.rcx &= 0x121U;
-    info.rdx &= 0x18100800U;
+    info.rdx &= 0x10100800U;
 
     return true;
 }
@@ -681,7 +1041,7 @@ xen_op_handler::xen_cpuid_leaf5_handler(
 
     info.rax = 0U;
     info.rax |= XEN_HVM_CPUID_APIC_ACCESS_VIRT;
-    // info.rax |= XEN_HVM_CPUID_X2APIC_VIRT;           // Need to support emulated VT-d first
+    info.rax |= XEN_HVM_CPUID_X2APIC_VIRT;           // Need to support emulated VT-d first
     // info.rax |= XEN_HVM_CPUID_IOMMU_MAPPINGS;        // Need to support emulated VT-d first
     info.rax |= XEN_HVM_CPUID_VCPU_ID_PRESENT;
     info.rax |= XEN_HVM_CPUID_DOMID_PRESENT;
@@ -739,6 +1099,10 @@ xen_op_handler::HYPERVISOR_memory_op(
     }
 
     switch (vcpu->rdi()) {
+        case XENMEM_decrease_reservation:
+            this->XENMEM_decrease_reservation_handler(vcpu);
+            return true;
+
         case XENMEM_add_to_physmap:
             this->XENMEM_add_to_physmap_handler(vcpu);
             return true;
@@ -753,6 +1117,40 @@ xen_op_handler::HYPERVISOR_memory_op(
 
     throw std::runtime_error("unknown HYPERVISOR_memory_op opcode");
 }
+
+void
+xen_op_handler::XENMEM_decrease_reservation_handler(
+    gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        auto arg = vcpu->map_arg<xen_memory_reservation_t>(vcpu->rsi());
+
+        expects(arg->domid == DOMID_SELF);
+        expects(arg->extent_order == 0);
+
+        auto gva = arg->extent_start.p;
+        auto len = arg->nr_extents * sizeof(xen_pfn_t);
+        auto map = vcpu->map_gva_4k<xen_pfn_t>(gva, len);
+        auto gfn = map.get();
+
+        for (auto i = 0; i < arg->nr_extents; i++) {
+            auto dom = m_vcpu->dom();
+            auto gpa = (gfn[i] << x64::pt::page_shift);
+            dom->unmap(gpa);
+            dom->release(gpa);
+        }
+
+        vcpu->set_rax(arg->nr_extents);
+    }
+    catchall({
+        vcpu->set_rax(FAILURE);
+    })
+
+}
+
+bool
+xen_op_handler::local_xenstore() const
+{ return m_vcpu->id() == 0x10000; }
 
 void
 xen_op_handler::XENMEM_add_to_physmap_handler(
@@ -774,11 +1172,19 @@ xen_op_handler::XENMEM_add_to_physmap_handler(
                     vcpu->map_gpa_4k<shared_info_t>(
                         xen_add_to_physmap_arg->gpfn << ::x64::pt::page_shift
                     );
-                this->reset_vcpu_time_info();
+                if (this->local_xenstore()) {
+                    m_shared_info->vcpu_info[0].time.pad0 = SIF_LOCAL_STORE;
+                }
+                break;
+
+            case XENMAPSPACE_grant_table:
+                m_gnttab_op->mapspace_grant_table(xen_add_to_physmap_arg.get());
                 break;
 
             default:
-                throw std::runtime_error("XENMEM_add_to_physmap: unknown space");
+                throw std::runtime_error(
+                    "XENMEM_add_to_physmap: unknown space: " +
+                    std::to_string(xen_add_to_physmap_arg->space));
         };
 
         vcpu->set_rax(SUCCESS);
@@ -868,17 +1274,185 @@ xen_op_handler::XENVER_get_features_handler(
         info->submap |= (1 << XENFEAT_highmem_assist);
         info->submap |= (1 << XENFEAT_gnttab_map_avail_bits);
         info->submap |= (1 << XENFEAT_hvm_callback_vector);
-        info->submap |= (1 << XENFEAT_hvm_safe_pvclock);
+//        info->submap |= (1 << XENFEAT_hvm_safe_pvclock);
         info->submap |= (1 << XENFEAT_hvm_pirqs);
         info->submap |= (1 << XENFEAT_dom0);
         info->submap |= (1 << XENFEAT_memory_op_vnode_supported);
         // info->submap |= (1 << XENFEAT_ARM_SMCCC_supported);
         info->submap |= (1 << XENFEAT_linux_rsdp_unrestricted);
-        info->submap |= (1 << XENFEAT_hvm_pirqs);
 
         vcpu->set_rax(SUCCESS);
     }
     catchall({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
+// -----------------------------------------------------------------------------
+// HYPERVISOR_grant_table_op
+// -----------------------------------------------------------------------------
+
+bool
+xen_op_handler::HYPERVISOR_grant_table_op(gsl::not_null<vcpu *> vcpu)
+{
+    if (vcpu->rax() != __HYPERVISOR_grant_table_op) {
+        return false;
+    }
+
+    switch (vcpu->rdi()) {
+        case GNTTABOP_query_size:
+            this->GNTTABOP_query_size_handler(vcpu);
+            return true;
+
+        case GNTTABOP_set_version:
+            this->GNTTABOP_set_version_handler(vcpu);
+            return true;
+
+        default:
+            break;
+    }
+
+    throw std::runtime_error("unknown HYPERVISOR_grant_tab_op cmd");
+}
+
+void
+xen_op_handler::GNTTABOP_query_size_handler(gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        auto arg = vcpu->map_arg<gnttab_query_size_t>(vcpu->rsi());
+        expects(arg->dom == DOMID_SELF);
+        m_gnttab_op->query_size(arg.get());
+        vcpu->set_rax(SUCCESS);
+    } catchall ({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
+void
+xen_op_handler::GNTTABOP_set_version_handler(gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        auto arg = vcpu->map_arg<gnttab_set_version_t>(vcpu->rsi());
+        m_gnttab_op->set_version(arg.get());
+        vcpu->set_rax(SUCCESS);
+    } catchall ({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
+// -----------------------------------------------------------------------------
+// HYPERVISOR_vm_assist
+// -----------------------------------------------------------------------------
+
+bool
+xen_op_handler::HYPERVISOR_vm_assist(gsl::not_null<vcpu *> vcpu)
+{
+    if (vcpu->rax() != __HYPERVISOR_vm_assist) {
+        return false;
+    }
+
+    // Comments in linux/arch/x86/xen/setup.c suggest that these are not
+    // used for HVMs. But we are PVH so are we PV too in this case?
+    //
+    vcpu->set_rax(FAILURE);
+
+    //switch (vcpu->rdi()) {
+    //    case VMASST_CMD_enable:
+    //        vcpu->set_rax(SUCCESS);
+    //        break;
+
+    //    default:
+    //        vcpu->set_rax(FAILURE);
+    //        return false;
+    //}
+
+    return true;
+}
+
+// -----------------------------------------------------------------------------
+// HYPERVISOR_vcpu_op
+// -----------------------------------------------------------------------------
+
+bool
+xen_op_handler::HYPERVISOR_vcpu_op(gsl::not_null<vcpu *> vcpu)
+{
+    if (vcpu->rax() != __HYPERVISOR_vcpu_op) {
+        return false;
+    }
+
+    switch (vcpu->rdi()) {
+        case VCPUOP_stop_periodic_timer:
+            this->VCPUOP_stop_periodic_timer_handler(vcpu);
+            return true;
+
+        case VCPUOP_register_vcpu_time_memory_area:
+            this->VCPUOP_register_vcpu_time_memory_area_handler(vcpu);
+            return true;
+
+        case VCPUOP_register_runstate_memory_area:
+            this->VCPUOP_register_runstate_memory_area_handler(vcpu);
+            return true;
+
+        case VCPUOP_stop_singleshot_timer:
+            this->VCPUOP_stop_singleshot_timer_handler(vcpu);
+            return true;
+
+        default:
+            break;
+    };
+
+    throw std::runtime_error("unknown HYPERVISOR_vcpu_op: " +
+                             std::to_string(vcpu->rdi()));
+}
+
+void
+xen_op_handler::VCPUOP_stop_periodic_timer_handler(gsl::not_null<vcpu *> vcpu)
+{
+    vcpu->set_rax(SUCCESS);
+}
+
+void
+xen_op_handler::VCPUOP_stop_singleshot_timer_handler(gsl::not_null<vcpu *> vcpu)
+{
+    vcpu->set_rax(SUCCESS);
+}
+
+void
+xen_op_handler::VCPUOP_register_vcpu_time_memory_area_handler(
+    gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        expects(m_tsc_freq_khz > 0);
+        expects(vcpu->rsi() == 0);
+
+        auto arg = vcpu->map_arg<vcpu_register_time_memory_area_t>(vcpu->rdx());
+        m_time_info = vcpu->map_arg<vcpu_time_info_t>(arg->addr.v);
+
+        m_time_info->flags = XEN_PVCLOCK_TSC_STABLE_BIT;
+        m_time_info->tsc_to_system_mul = (GHz << 32U) / (m_tsc_freq_khz * 1000U);
+        m_time_info->tsc_shift = 0;
+        m_time_info->version = 0;
+
+        vcpu->set_rax(SUCCESS);
+    } catchall ({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
+void
+xen_op_handler::VCPUOP_register_runstate_memory_area_handler(
+    gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        expects(vcpu->rsi() == 0);
+
+        auto arg = vcpu->map_arg<vcpu_register_runstate_memory_area_t>(vcpu->rdx());
+        m_runstate_info = vcpu->map_arg<vcpu_runstate_info_t>(arg->addr.v);
+        m_runstate_info->state = RUNSTATE_running;
+        m_runstate_info->time[RUNSTATE_running] = 0;
+
+        vcpu->set_rax(SUCCESS);
+    } catchall ({
         vcpu->set_rax(FAILURE);
     })
 }
@@ -890,42 +1464,42 @@ xen_op_handler::XENVER_get_features_handler(
 bool
 xen_op_handler::HYPERVISOR_sched_op(gsl::not_null<vcpu *> vcpu)
 {
-    if (vcpu->rax() != __HYPERVISOR_sched_op) {
-        return false;
-    }
-
-    switch (vcpu->rdi()) {
-        case SCHEDOP_yield:
-            this->SCHEDOP_yield_handler(vcpu);
-            return true;
-
-        default:
-            break;
-    };
+//    if (vcpu->rax() != __HYPERVISOR_sched_op) {
+//        return false;
+//    }
+//
+//    switch (vcpu->rdi()) {
+//        case SCHEDOP_yield:
+//            this->SCHEDOP_yield_handler(vcpu);
+//            return true;
+//
+//        default:
+//            break;
+//    };
 
     throw std::runtime_error(
         "unknown HYPERVISOR_sched_op: " + std::to_string(vcpu->rdi()));
 }
 
-void
-xen_op_handler::SCHEDOP_yield_handler(gsl::not_null<vcpu *> vcpu)
-{
-    try {
-        m_sched_op->handle_yield(vcpu);
-        vcpu->set_rax(SUCCESS);
-    }
-    catchall({
-        vcpu->set_rax(FAILURE);
-    })
-}
+//void
+//xen_op_handler::SCHEDOP_yield_handler(gsl::not_null<vcpu *> vcpu)
+//{
+//    try {
+//        m_sched_op->handle_yield(vcpu);
+//        vcpu->set_rax(SUCCESS);
+//        m_vcpu->return_and_continue();
+//    }
+//    catchall({
+//        vcpu->set_rax(FAILURE);
+//    })
+//}
 
 // -----------------------------------------------------------------------------
 // HYPERVISOR_event_channel_op
 // -----------------------------------------------------------------------------
 
 bool
-xen_op_handler::HYPERVISOR_event_channel_op(
-    gsl::not_null<vcpu *> vcpu)
+xen_op_handler::HYPERVISOR_event_channel_op(gsl::not_null<vcpu *> vcpu)
 {
     if (vcpu->rax() != __HYPERVISOR_event_channel_op) {
         return false;
@@ -934,6 +1508,14 @@ xen_op_handler::HYPERVISOR_event_channel_op(
     switch (vcpu->rdi()) {
         case EVTCHNOP_init_control:
             this->EVTCHNOP_init_control_handler(vcpu);
+            return true;
+
+        case EVTCHNOP_expand_array:
+            this->EVTCHNOP_expand_array_handler(vcpu);
+            return true;
+
+        case EVTCHNOP_alloc_unbound:
+            this->EVTCHNOP_alloc_unbound_handler(vcpu);
             return true;
 
         case EVTCHNOP_send:
@@ -963,8 +1545,33 @@ xen_op_handler::EVTCHNOP_init_control_handler(
 }
 
 void
-xen_op_handler::EVTCHNOP_send_handler(
-    gsl::not_null<vcpu *> vcpu)
+xen_op_handler::EVTCHNOP_expand_array_handler(gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        auto arg = vcpu->map_arg<evtchn_expand_array_t>(vcpu->rsi());
+        m_evtchn_op->expand_array(arg.get());
+        vcpu->set_rax(SUCCESS);
+    }
+    catchall({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
+void
+xen_op_handler::EVTCHNOP_alloc_unbound_handler(gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        auto arg = vcpu->map_arg<evtchn_alloc_unbound_t>(vcpu->rsi());
+        m_evtchn_op->alloc_unbound(arg.get());
+        vcpu->set_rax(SUCCESS);
+    }
+    catchall({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
+void
+xen_op_handler::EVTCHNOP_send_handler(gsl::not_null<vcpu *> vcpu)
 {
     try {
         auto arg = vcpu->map_arg<evtchn_send_t>(vcpu->rsi());
@@ -1008,23 +1615,47 @@ xen_op_handler::HYPERVISOR_hvm_op(
     throw std::runtime_error("unknown HYPERVISOR_hvm_op opcode");
 }
 
+inline static void
+verify_callback_via(uint64_t via)
+{
+    const auto from = 56U;
+    const auto type = (via & HVM_PARAM_CALLBACK_IRQ_TYPE_MASK) >> from;
+
+    if (type != HVM_PARAM_CALLBACK_TYPE_VECTOR) {
+        throw std::invalid_argument(
+            "unsupported callback via type: " + std::to_string(via)
+        );
+    }
+
+    const auto vector = via & 0xFFU;
+    if (vector < 0x20U || vector > 0xFFU) {
+        throw std::invalid_argument(
+            "invalid callback vector: " + std::to_string(vector)
+        );
+    }
+}
+
 void
-xen_op_handler::HVMOP_set_param_handler(
-    gsl::not_null<vcpu *> vcpu)
+xen_op_handler::HVMOP_set_param_handler(gsl::not_null<vcpu *> vcpu)
 {
     try {
-        auto arg =
-            vcpu->map_arg<xen_hvm_param_t>(vcpu->rsi());
+        auto arg = vcpu->map_arg<xen_hvm_param_t>(vcpu->rsi());
 
         switch (arg->index) {
-            default: {
-                bfdebug_info(0, "HVMOP_set_param: unknown");
-                bfdebug_subnhex(0, "domid", arg->domid);
-                bfdebug_subnhex(0, "index", arg->index);
+            case HVM_PARAM_CALLBACK_IRQ:
+                verify_callback_via(arg->value);
+                m_evtchn_op->set_callback_via(arg->value & 0xFFU);
+                bfalert_nhex(0, "callback via", arg->value);
+                vcpu->set_rax(SUCCESS);
+                break;
 
+            default:
+                bfalert_info(0, "Unsupported HVM param:");
+                bfalert_subnhex(0, "domid", arg->domid);
+                bfalert_subnhex(0, "index", arg->index);
+                bfalert_subnhex(0, "value", arg->value);
                 vcpu->set_rax(FAILURE);
-                return;
-            }
+                break;
         };
     }
     catchall({
@@ -1033,8 +1664,7 @@ xen_op_handler::HVMOP_set_param_handler(
 }
 
 void
-xen_op_handler::HVMOP_get_param_handler(
-    gsl::not_null<vcpu *> vcpu)
+xen_op_handler::HVMOP_get_param_handler(gsl::not_null<vcpu *> vcpu)
 {
     try {
         auto arg =
@@ -1042,7 +1672,7 @@ xen_op_handler::HVMOP_get_param_handler(
 
         switch (arg->index) {
             case HVM_PARAM_CONSOLE_EVTCHN:
-                arg->value = 1;
+                arg->value = m_evtchn_op->bind_console();
                 break;
 
             case HVM_PARAM_CONSOLE_PFN: {
@@ -1050,6 +1680,16 @@ xen_op_handler::HVMOP_get_param_handler(
                 arg->value = CONSOLE_GPA >> x64::pt::page_shift;
                 break;
             }
+
+            case HVM_PARAM_STORE_EVTCHN:
+                arg->value = m_evtchn_op->bind_store();
+                break;
+
+//            case HVM_PARAM_STORE_PFN: {
+//                m_store = vcpu->map_gpa_4k<uint8_t>(STORE_GPA);
+//                arg->value = STORE_GPA >> x64::pt::page_shift;
+//                break;
+//            }
 
             default: {
                 bfdebug_info(0, "HVMOP_get_param: unknown");
@@ -1079,11 +1719,25 @@ xen_op_handler::HVMOP_pagetable_dying_handler(
 // Helpers
 // -----------------------------------------------------------------------------
 
+uint64_t
+xen_op_handler::tsc_to_sys_time() const
+{
+    auto mul = m_shared_info->vcpu_info[0].time.tsc_to_system_mul;
+    return (::x64::read_tsc::get() * mul) >> 32U;
+}
+
+uint64_t
+xen_op_handler::tsc_to_sys_time(uint64_t tsc) const
+{
+    auto mul = m_shared_info->vcpu_info[0].time.tsc_to_system_mul;
+    return (tsc * mul) >> 32U;
+}
+
 void
 xen_op_handler::reset_vcpu_time_info()
 {
     expects(m_shared_info);
-    m_tsc_frequency = tsc_frequency();
+    m_tsc_freq_khz = tsc_frequency();
 
     /// The equation for tsc_to_system_mul is the following:
     /// - tsc_to_system_mul = (10^9 << 32) / (CPU freq Hz)
@@ -1095,30 +1749,28 @@ xen_op_handler::reset_vcpu_time_info()
     /// Since we require an invarinat TSC, this shift is not needed so it is
     /// set to 0.
     ///
+    /// Note that system_time is in nanoseconds and is updated by the guest.
+    /// There are nice alternative explanations for this structure sprinkled
+    /// throughout the KVM code. See Documentation/virtual/kvm/msr.txt for
+    /// more info.
+    ///
 
-    constexpr const uint64_t GHz = 10e9;
     auto &info = m_shared_info->vcpu_info[0].time;
 
-    info.tsc_shift = 0;
-    info.tsc_to_system_mul = (GHz << 32) / (m_tsc_frequency * 1000);
+    info.version = 0;
     info.flags = XEN_PVCLOCK_TSC_STABLE_BIT;
+    info.tsc_to_system_mul = (GHz << 32U) / (m_tsc_freq_khz * 1000U);
+    info.tsc_shift = 0;
+    info.tsc_timestamp = ::x64::read_tsc::get();
+    info.system_time = this->tsc_to_sys_time(info.tsc_timestamp);
 }
 
-void
-xen_op_handler::update_vcpu_time_info()
+static void update_time_info(gsl::not_null<vcpu_time_info_t *> info)
 {
-    if (!m_shared_info) {
-        return;
-    }
-
-    constexpr const uint64_t us = 10e6;
-    auto &info = m_shared_info->vcpu_info[0].time;
-
     // The xen.h comments suggest that we need to flip the version to prevent
-    // races, although its not clear what type of races could occur if this
-    // information is vCPU specific (since the vCPU that should be reading
-    // this is not active while the VMM is modifying the fields). Either way
-    // we do it.
+    // races. Since we only have one vCPU right now, we don't really need to,
+    // but once we have multiple vCPUs, another vCPU may try to read this
+    // while we are updating.
     //
     // Note that we do our calculations using MHz and not kHz. The reason is
     // even with a 64bit number, we run the risk of overflowing with kHz.
@@ -1127,93 +1779,54 @@ xen_op_handler::update_vcpu_time_info()
     // granularity extends to the kHz level.
     //
 
-    info.version = 1;
-    info.tsc_timestamp = ::x64::read_tsc::get();
-    info.system_time = (info.tsc_timestamp * 1000) / (m_tsc_frequency / 1000);
-    info.version = 0;
+    info->version++;
+    ::intel_x64::barrier::wmb();
+
+    const uint64_t tsc_mul = info->tsc_to_system_mul;
+    const uint64_t tsc_pre = info->tsc_timestamp;
+    const uint64_t tsc_now = ::x64::read_tsc::get();
+
+    info->tsc_timestamp = tsc_now;
+    info->system_time += (((tsc_now - tsc_pre) * tsc_mul) >> 32U);
+
+    ::intel_x64::barrier::wmb();
+    info->version++;
+}
+
+void
+xen_op_handler::update_vcpu_time_info()
+{
+    if (GSL_UNLIKELY(!m_shared_info)) {
+        return;
+    }
+
+    // TODO: we will need to calculate the offset into
+    // vcpu_info once we support multiple vcpus per domain
+    auto time = &m_shared_info->vcpu_info[0].time;
+    update_time_info(time);
+
+    if (GSL_LIKELY(m_time_info)) {
+        m_time_info->version++;
+        ::intel_x64::barrier::wmb();
+
+        m_time_info->tsc_timestamp = time->tsc_timestamp;
+        m_time_info->system_time = time->system_time;
+
+        ::intel_x64::barrier::wmb();
+        m_time_info->version--;
+    }
+
+    if (GSL_LIKELY(m_runstate_info)) {
+        auto &info = m_runstate_info;
+        info->state_entry_time = time->system_time;
+        info->time[info->state] = time->system_time;
+        ::intel_x64::barrier::wmb();
+    }
 }
 
 shared_info_t *
 xen_op_handler::shared_info()
 { return m_shared_info.get(); }
-
-// -----------------------------------------------------------------------------
-// INIT-SIPI-SIPI handler
-// -----------------------------------------------------------------------------
-
-// bool
-// xen_op_handler::handle_xapic_init_sipi(
-//     gsl::not_null<vcpu_t *> vcpu,
-//     eapis::intel_x64::ept_violation_handler::info_t &info)
-// {
-//     constexpr uint32_t icr0_offset = 0x300U;
-//     constexpr uint32_t icr1_offset = 0x310U;
-//
-//     const auto base = vcpu->lapic_base();
-//     if (bfn::upper(info.gpa) != base) {
-//         return false;
-//     }
-//
-//     const auto offset = bfn::lower(info.gpa);
-//     switch (offset) {
-//         case icr0_offset:
-//         case icr1_offset:
-//             break;
-//         default:
-//             return false;
-//     }
-//
-//     const auto len = vmcs_n::vm_exit_instruction_length::get();
-//     const auto ump = vcpu->map_gpa_4k<uint8_t>(base);
-//     if (!ump) {
-//         throw std::runtime_error("failed to map xAPIC gpa");
-//     }
-//
-//     ZydisDecoder decoder;
-//     ZydisDecodedInstruction insn;
-//     ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_ADDRESS_WIDTH_64);
-//     const auto ret = ZydisDecoderDecodeBuffer(&decoder,
-//                                               ump.get,
-//                                               len,
-//                                               info.gva,
-//                                               &insn);
-//     if (!ZYAN_SUCCESS(ret)) {
-//         throw std::runtime_error("failed to decode xAPIC access");
-//     }
-//
-//     if (insn.operand_count != 2) {
-//         throw std::runtime_error("invalid op count for xAPIC access");
-//     }
-//
-//     ZydisDecodedOperand *src = insn.operands[1];
-//     if (src->type != ZYDIS_OPERAND_TYPE_REGISTER) {
-//         throw std::runtime_error("invalid src op for xAPIC access");
-//     }
-//
-//     uint64_t data;
-//
-//     switch (src->reg.value) {
-//         case ZYDIS_REGISTER_EAX: data = vcpu->rax();
-//         case ZYDIS_REGISTER_EBX: data = vcpu->rbx();
-//         case ZYDIS_REGISTER_ECX: data = vcpu->rcx();
-//         case ZYDIS_REGISTER_EDX: data = vcpu->rdx();
-//         case ZYDIS_REGISTER_ESI: data = vcpu->rsi();
-//         case ZYDIS_REGISTER_EDI: data = vcpu->rdi();
-//         case ZYDIS_REGISTER_R8D: data = vcpu->r08();
-//         case ZYDIS_REGISTER_R9D: data = vcpu->r09();
-//         case ZYDIS_REGISTER_R10D: data = vcpu->r10();
-//         case ZYDIS_REGISTER_R11D: data = vcpu->r11();
-//         case ZYDIS_REGISTER_R12D: data = vcpu->r12();
-//         case ZYDIS_REGISTER_R13D: data = vcpu->r13();
-//         case ZYDIS_REGISTER_R14D: data = vcpu->r14();
-//         case ZYDIS_REGISTER_R15D: data = vcpu->r15();
-//         default:
-//             throw std::runtime_error("Unexpected register value: " +
-//                                      std::to_string(src->reg.value));
-//     }
-//
-//     const auto mode = ::intel_x64::lapic::icr::delivery_mode::get(data);
-// }
 
 // -----------------------------------------------------------------------------
 // Quirks

@@ -24,16 +24,24 @@
 #include "../base.h"
 
 #include "public/xen.h"
+#include "public/vcpu.h"
+#include "public/grant_table.h"
 #include "public/arch-x86/cpuid.h"
+
 #include "evtchn_op.h"
+#include "gnttab_op.h"
 #include "sched_op.h"
 
 #include <eapis/hve/arch/intel_x64/vmexit/cpuid.h>
 #include <eapis/hve/arch/intel_x64/vmexit/wrmsr.h>
 #include <eapis/hve/arch/intel_x64/vmexit/rdmsr.h>
 #include <eapis/hve/arch/intel_x64/vmexit/io_instruction.h>
+#include <eapis/hve/arch/intel_x64/vmexit/ept_violation.h>
 
 #include <eapis/hve/arch/x64/unmapper.h>
+
+#include <bfcallonce.h>
+
 
 // -----------------------------------------------------------------------------
 // Exports
@@ -117,15 +125,24 @@ private:
     bool xen_debug_nhex_wrmsr_handler(
         gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::wrmsr_handler::info_t &info);
 
+    bool handle_tsc_deadline(
+        gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::wrmsr_handler::info_t &info);
+
     // -------------------------------------------------------------------------
     // CPUID
     // -------------------------------------------------------------------------
 
+    bool cpuid_ack_handler(
+        gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info);
     bool cpuid_zero_handler(
         gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info);
     bool cpuid_pass_through_handler(
         gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info);
 
+    bool cpuid_leaf1_handler(
+        gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info);
+    bool cpuid_leaf4_handler(
+        gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info);
     bool cpuid_leaf6_handler(
         gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info);
     bool cpuid_leaf7_handler(
@@ -157,11 +174,25 @@ private:
     // -------------------------------------------------------------------------
 
     bool HYPERVISOR_memory_op(gsl::not_null<vcpu *> vcpu);
+    void XENMEM_decrease_reservation_handler(gsl::not_null<vcpu *> vcpu);
     void XENMEM_add_to_physmap_handler(gsl::not_null<vcpu *> vcpu);
     void XENMEM_memory_map_handler(gsl::not_null<vcpu *> vcpu);
 
     bool HYPERVISOR_xen_version(gsl::not_null<vcpu *> vcpu);
     void XENVER_get_features_handler(gsl::not_null<vcpu *> vcpu);
+
+    bool HYPERVISOR_grant_table_op(gsl::not_null<vcpu *> vcpu);
+    void GNTTABOP_query_size_handler(gsl::not_null<vcpu *> vcpu);
+    void GNTTABOP_set_version_handler(gsl::not_null<vcpu *> vcpu);
+
+    bool HYPERVISOR_vm_assist(gsl::not_null<vcpu *> vcpu);
+
+    bool HYPERVISOR_vcpu_op(gsl::not_null<vcpu *> vcpu);
+    void VCPUOP_stop_periodic_timer_handler(gsl::not_null<vcpu *> vcpu);
+    void VCPUOP_register_vcpu_time_memory_area_handler(gsl::not_null<vcpu *> vcpu);
+    void VCPUOP_register_runstate_memory_area_handler(gsl::not_null<vcpu *> vcpu);
+    void VCPUOP_stop_singleshot_timer_handler(gsl::not_null<vcpu *> vcpu);
+    void VCPUOP_set_singleshot_timer_handler(gsl::not_null<vcpu *> vcpu);
 
     bool HYPERVISOR_hvm_op(gsl::not_null<vcpu *> vcpu);
     void HVMOP_set_param_handler(gsl::not_null<vcpu *> vcpu);
@@ -170,17 +201,36 @@ private:
 
     bool HYPERVISOR_event_channel_op(gsl::not_null<vcpu *> vcpu);
     void EVTCHNOP_init_control_handler(gsl::not_null<vcpu *> vcpu);
+    void EVTCHNOP_expand_array_handler(gsl::not_null<vcpu *> vcpu);
+    void EVTCHNOP_alloc_unbound_handler(gsl::not_null<vcpu *> vcpu);
     void EVTCHNOP_send_handler(gsl::not_null<vcpu *> vcpu);
 
     bool HYPERVISOR_sched_op(gsl::not_null<vcpu *> vcpu);
     void SCHEDOP_yield_handler(gsl::not_null<vcpu *> vcpu);
 
     // -------------------------------------------------------------------------
+    // Local APIC
+    // -------------------------------------------------------------------------
+
+    bool xapic_handle_write(
+        gsl::not_null<vcpu_t *> vcpu,
+        eapis::intel_x64::ept_violation_handler::info_t &info);
+
+    void xapic_handle_write_icr(uint64_t icr_low);
+    void xapic_handle_write_lvt_timer(uint64_t timer);
+    void xapic_handle_write_init_count(uint64_t val);
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
+    bool local_xenstore() const;
+    uint64_t tsc_to_sys_time() const;
+    uint64_t tsc_to_sys_time(uint64_t tsc) const;
     void reset_vcpu_time_info();
     void update_vcpu_time_info();
+
+    bool handle_vmx_pet(gsl::not_null<vcpu_t *> vcpu);
 
     // -------------------------------------------------------------------------
     // Quirks
@@ -190,17 +240,46 @@ private:
 
 private:
 
-    uint64_t m_tsc_frequency;
+#ifndef MIN_TSC_TICKS
+#define MIN_TSC_TICKS 500000
+#endif
+
+#ifndef MIN_EXIT_TICKS
+#define MIN_EXIT_TICKS 16000
+#endif
+
+    static constexpr auto min_tsc_ticks = MIN_TSC_TICKS;
+    static constexpr auto min_exit_ticks = MIN_EXIT_TICKS;
+
+    bfn::once_flag m_tsc_once_flag{};
+
+    uint64_t m_apic_base{};
+
+    uint64_t m_tsc_freq_khz{};
+    uint64_t m_tsc_vector{};
+    uint64_t m_tsc_exit{0};
+    uint64_t m_tsc_lost{0};
+
+    uint64_t m_pet_shift{};
+    uint64_t m_pet_ticks{};
+
     std::unordered_map<uint32_t, uint64_t> m_msrs;
+    std::unordered_map<uint64_t, eapis::x64::unique_map<uint8_t>> m_xapic_rip_cache;
 
 private:
 
     vcpu *m_vcpu;
 
     uint64_t m_hypercall_page_gpa{};
+
+    eapis::x64::unique_map<vcpu_runstate_info_t> m_runstate_info;
+    eapis::x64::unique_map<vcpu_time_info_t> m_time_info;
     eapis::x64::unique_map<shared_info_t> m_shared_info;
     eapis::x64::unique_map<uint8_t> m_console;
+    eapis::x64::unique_map<uint8_t> m_store;
+
     std::unique_ptr<hyperkernel::intel_x64::evtchn_op> m_evtchn_op;
+    std::unique_ptr<hyperkernel::intel_x64::gnttab_op> m_gnttab_op;
     std::unique_ptr<hyperkernel::intel_x64::sched_op> m_sched_op;
 
 public:

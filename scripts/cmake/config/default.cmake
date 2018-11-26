@@ -1,6 +1,6 @@
 #
-# Bareflank Hypervisor
-# Copyright (C) 2015 Assured Information Security, Inc.
+# Bareflank Hyperkernel
+# Copyright (C) 2018 Assured Information Security, Inc.
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
@@ -16,23 +16,18 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-cmake_minimum_required(VERSION 3.6)
-project(bfexec C CXX)
+# ------------------------------------------------------------------------------
+# Hyperkernel variables
+# ------------------------------------------------------------------------------
 
-include(${SOURCE_CMAKE_DIR}/project.cmake)
-init_project(
-    INCLUDES ${CMAKE_CURRENT_LIST_DIR}/../bfvmm/include
-    INCLUDES ${CMAKE_CURRENT_LIST_DIR}/../bfsdk/include
-    INCLUDES ${CMAKE_CURRENT_LIST_DIR}/../include
+set(HK_CMAKE_DIR ${CMAKE_CURRENT_LIST_DIR}/../../cmake)
+set(HK_UTIL_DIR  ${CMAKE_CURRENT_LIST_DIR}/../../../scripts/util)
+
+# ------------------------------------------------------------------------------
+# Driver variables
+# ------------------------------------------------------------------------------
+
+set(HKD_SRC_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../bfdriver
+    CACHE INTERNAL
+    "Source root direfctory"
 )
-
-list(APPEND SOURCES
-    src/main.c
-    src/linux/platform.c
-)
-
-add_executable(bfexec ${SOURCES})
-target_link_static_libraries(bfexec bfintrinsics)
-target_link_libraries(bfexec pthread)
-
-install(TARGETS bfexec DESTINATION bin)
