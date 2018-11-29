@@ -175,6 +175,27 @@ domain_op__map_gpa(uint64_t gva, uint64_t gpa, uint64_t type)
 }
 
 status_t
+domain_op__map_gpa_single_gva(
+    uint64_t gva, uint64_t gpa, uint64_t size, uint64_t type)
+{
+    uint64_t index;
+
+    for (index = 0; index < size; index += 0x1000) {
+        status_t ret = domain_op__map_gpa(
+            gva, gpa + index, type
+        );
+
+        if (ret != SUCCESS) {
+            BFALERT("map_mem failed\n");
+            return FAILURE;
+        }
+    }
+
+    return SUCCESS;
+}
+
+
+status_t
 domain_op__map_buffer(
     uint64_t gva, uint64_t gpa, uint64_t size, uint64_t type)
 {
@@ -426,8 +447,9 @@ reserved_8000_t *g_reserved_8000 = 0;   /* Xen store */
 reserved_A000_t *g_reserved_A000 = 0;   /* Real-mode trampoline */
 
 // TODO: sanity check this size against the size of vmlinux
+// TODO: this should be a setting that is filled in from the command line.
 uint64_t g_ram_addr = 0x1000000;
-uint64_t g_ram_size = 0x3F0 << 20;
+uint64_t g_ram_size = 0x20000000;
 
 void *g_zero_page;
 
@@ -805,37 +827,37 @@ setup_xen_disabled()
     }
 
     /* Zero Page */
-    ret = domain_op__map_buffer((uint64_t)g_zero_page, 0x0, 0x1000, MAP_RO);
+    ret = domain_op__map_gpa_single_gva((uint64_t)g_zero_page, 0x0, 0x1000, MAP_RO);
     if (ret != BF_SUCCESS) {
-        BFALERT("domain_op__map_buffer failed\n");
+        BFALERT("domain_op__map_gpa_single_gva failed\n");
         return FAILURE;
     }
 
     /* Disable DMI */
-    ret = domain_op__map_buffer((uint64_t)g_zero_page, 0xF0000, 0x10000, MAP_RO);
+    ret = domain_op__map_gpa_single_gva((uint64_t)g_zero_page, 0xF0000, 0x10000, MAP_RO);
     if (ret != BF_SUCCESS) {
-        BFALERT("domain_op__map_buffer failed\n");
+        BFALERT("domain_op__map_gpa_single_gva failed\n");
         return FAILURE;
     }
 
     /* Disable Video BIOS region */
-    ret = domain_op__map_buffer((uint64_t)g_zero_page, 0xC0000, 0x10000, MAP_RO);
+    ret = domain_op__map_gpa_single_gva((uint64_t)g_zero_page, 0xC0000, 0x10000, MAP_RO);
     if (ret != BF_SUCCESS) {
-        BFALERT("domain_op__map_buffer failed\n");
+        BFALERT("domain_op__map_gpa_single_gva failed\n");
         return FAILURE;
     }
 
     /* ROMs */
-    ret = domain_op__map_buffer((uint64_t)g_zero_page, 0xD0000, 0x10000, MAP_RO);
+    ret = domain_op__map_gpa_single_gva((uint64_t)g_zero_page, 0xD0000, 0x10000, MAP_RO);
     if (ret != BF_SUCCESS) {
-        BFALERT("domain_op__map_buffer failed\n");
+        BFALERT("domain_op__map_gpa_single_gva failed\n");
         return FAILURE;
     }
 
     /* ROMs */
-    ret = domain_op__map_buffer((uint64_t)g_zero_page, 0xE4000, 0x10000 - 0x4000, MAP_RO);
+    ret = domain_op__map_gpa_single_gva((uint64_t)g_zero_page, 0xE4000, 0x10000 - 0x4000, MAP_RO);
     if (ret != BF_SUCCESS) {
-        BFALERT("domain_op__map_buffer failed\n");
+        BFALERT("domain_op__map_gpa_single_gva failed\n");
         return FAILURE;
     }
 
@@ -848,9 +870,9 @@ setup_xen_disabled()
     //
 
     /* MP Table */
-    ret = domain_op__map_buffer((uint64_t)g_zero_page, 0x9F000, 0x1000, MAP_RO);
+    ret = domain_op__map_gpa_single_gva((uint64_t)g_zero_page, 0x9F000, 0x1000, MAP_RO);
     if (ret != BF_SUCCESS) {
-        BFALERT("domain_op__map_buffer failed\n");
+        BFALERT("domain_op__map_gpa_single_gva failed\n");
         return FAILURE;
     }
 

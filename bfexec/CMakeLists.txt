@@ -28,8 +28,19 @@ init_project(
 
 list(APPEND SOURCES
     src/main.c
-    src/linux/platform.c
 )
+
+if(BUILD_TARGET_OS STREQUAL "Linux")
+    list(APPEND SOURCES
+        src/linux/platform.c
+    )
+elseif(BUILD_TARGET_OS STREQUAL "Windows")
+    list(APPEND SOURCES
+        src/windows/platform.c
+    )
+else()
+    message(FATAL_ERROR "Unsupported OS: ${BUILD_TARGET_OS}")
+endif()
 
 add_executable(bfexec ${SOURCES})
 target_link_static_libraries(bfexec bfintrinsics)
