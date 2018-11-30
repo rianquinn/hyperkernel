@@ -86,10 +86,6 @@ struct vm_t {
 
 uint32_t _cpuid_eax(uint32_t val) NOEXCEPT;
 
-uint64_t
-ack()
-{ return _cpuid_eax(0xBF00); }
-
 /* -------------------------------------------------------------------------- */
 /* Signal Handling                                                            */
 /* -------------------------------------------------------------------------- */
@@ -921,7 +917,7 @@ main(int argc, const char *argv[])
         return EXIT_FAILURE;
     }
 
-    if (ack() == 0) {
+    if (_cpuid_eax(0xBF00) != 0xBF01) {
         return EXIT_FAILURE;
     }
 

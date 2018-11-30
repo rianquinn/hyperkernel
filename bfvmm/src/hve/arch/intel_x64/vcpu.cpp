@@ -66,6 +66,16 @@ io_instruction_handler(
     return true;
 }
 
+static bool
+ept_violation_handler(
+    gsl::not_null<vcpu_t *> vcpu)
+{
+    fault(vcpu, "ept_violation_handler executed. unsupported!!!");
+
+    // Unreachable
+    return true;
+}
+
 //------------------------------------------------------------------------------
 // Implementation
 //------------------------------------------------------------------------------
@@ -208,6 +218,18 @@ vcpu::write_domU_guest_state(domain *domain)
 
     this->add_default_io_instruction_handler(
         ::handler_delegate_t::create<io_instruction_handler>()
+    );
+
+    this->add_default_ept_read_violation_handler(
+        ::handler_delegate_t::create<ept_violation_handler>()
+    );
+
+    this->add_default_ept_write_violation_handler(
+        ::handler_delegate_t::create<ept_violation_handler>()
+    );
+
+    this->add_default_ept_execute_violation_handler(
+        ::handler_delegate_t::create<ept_violation_handler>()
     );
 }
 
