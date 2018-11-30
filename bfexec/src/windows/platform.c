@@ -62,7 +62,7 @@ platform_alloc_rw(uint64_t len)
         return 0;
     }
 
-    // if (!VirtualLock(addr, len)) {
+    // if (VirtualLock(addr, len) == 0) {
     //     free(addr);
 
     //     BFALERT("VirtualLock failed\n");

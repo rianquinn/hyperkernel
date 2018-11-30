@@ -290,7 +290,6 @@ set_vm_entry(const struct bfelf_binary_t *bin, uintptr_t *entry)
 
         uint64_t *addr = (uint64_t *)&hay[i + 4];
         *entry = *addr;
-        printf("PHYS32 entry: %p\n", *entry);
 
         return SUCCESS;
     }
@@ -476,7 +475,7 @@ reserved_A000_t *g_reserved_A000 = 0;   /* Real-mode trampoline */
 
 // TODO: this should be a setting that is filled in from the command line.
 uint64_t g_ram_addr = 0x1000000;
-uint64_t g_ram_size = 0x500 << 20;
+uint64_t g_ram_size = 536870912;
 
 void *g_zero_page;
 
