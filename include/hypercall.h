@@ -160,9 +160,9 @@ __domain_op__add_e820_entry(
 #define __enum_vcpu_op__set_rip 0x110
 #define __enum_vcpu_op__set_rbx 0x111
 
-#define VCPU_OP__RUN_CONTINUE 0xBF01
+#define VCPU_OP__RUN_CONTINUE 0xBF01LL
 #define VCPU_OP__RUN_SLEEP 0xBF02
-#define VCPU_OP__SLEEP_USEC 0xFFFFFFFFFFFF0000
+#define VCPU_OP__SLEEP_USEC 0xFFFFFFFFFFFF0000ULL
 
 static inline vcpuid_t
 __vcpu_op__create_vcpu(domainid_t domainid)

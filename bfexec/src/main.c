@@ -259,7 +259,7 @@ set_vm_entry(const struct bfelf_binary_t *bin, uintptr_t *entry)
     }
 
     const uint32_t *hay = (const uint32_t *)(bin->file + shdr->sh_offset);
-    const uint32_t dwords = shdr->sh_size / 4;
+    const uint64_t dwords = shdr->sh_size / 4;
     const uint32_t needle[4] = {
         0x4U, /* namesz */
         0x8U, /* descsz */
@@ -267,7 +267,7 @@ set_vm_entry(const struct bfelf_binary_t *bin, uintptr_t *entry)
         0x006e6558U /* "Xen\0" */
     };
 
-    for (int i = 0; (i + 5) < dwords; i++) {
+    for (uint64_t i = 0; (i + 5) < dwords; i++) {
         if (hay[i] != needle[0]) {
             continue;
         }
@@ -319,11 +319,11 @@ vcpu_op__create_vcpu(void)
     return SUCCESS;
 }
 
-static inline status_t vcpu_run_code(status_t s)
-{ return s & ~VCPU_OP__SLEEP_USEC; }
+static inline uint64_t vcpu_run_code(status_t s)
+{ return (uint64_t)s & ~VCPU_OP__SLEEP_USEC; }
 
-static inline long vcpu_sleep_usec(status_t s)
-{ return (s & VCPU_OP__SLEEP_USEC) >> 16; }
+static inline uint64_t vcpu_sleep_usec(status_t s)
+{ return ((uint64_t)s & VCPU_OP__SLEEP_USEC) >> 16U; }
 
 #include <time.h>
 int usleep(int microseconds)
@@ -471,7 +471,7 @@ reserved_A000_t *g_reserved_A000 = 0;   /* Real-mode trampoline */
 
 // TODO: this should be a setting that is filled in from the command line.
 uint64_t g_ram_addr = 0x1000000;
-uint64_t g_ram_size = 536870912;
+uint64_t g_ram_size = 128 << 20;
 
 void *g_zero_page;
 
@@ -810,7 +810,7 @@ status_t
 setup_rm_trampoline()
 {
     status_t ret;
-    int size = REAL_MODE_SIZE;
+    uint32_t size = REAL_MODE_SIZE;
 
     g_reserved_A000 = (reserved_A000_t *)alloc_buffer(size);
     if (g_reserved_A000 == 0) {
