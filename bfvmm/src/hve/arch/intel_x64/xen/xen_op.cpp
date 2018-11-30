@@ -560,6 +560,10 @@ xen_op_handler::xapic_handle_write(
         case initial_count::indx:
             m_vcpu->lapic_write(idx, val);
             break;
+        case 0xd0:
+            bfalert_info(0, "received perf interrupt");
+            break;
+
         default:
             bfalert_nhex(0, "unhandled xapic write indx:", idx);
             return false;
