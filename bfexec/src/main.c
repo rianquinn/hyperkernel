@@ -518,17 +518,17 @@ setup_e820_map()
         return FAILURE;
     }
 
-    ret = __domain_op__add_e820_entry(
-        g_vm.domainid,
-        0x9000,
-        0x1000,
-        XEN_HVM_MEMMAP_TYPE_RAM
-    );
+    // ret = __domain_op__add_e820_entry(
+    //     g_vm.domainid,
+    //     0x9000,
+    //     0x1000,
+    //     XEN_HVM_MEMMAP_TYPE_RAM
+    // );
 
-    if (ret != SUCCESS) {
-        BFALERT("__domain_op__add_e820_entry failed\n");
-        return FAILURE;
-    }
+    // if (ret != SUCCESS) {
+    //     BFALERT("__domain_op__add_e820_entry failed\n");
+    //     return FAILURE;
+    // }
 
     ret = __domain_op__add_e820_entry(
         g_vm.domainid,
@@ -699,7 +699,7 @@ status_t
 setup_xen_cmdline()
 {
     status_t ret;
-    const char *cmdline = "console=uart,io,0x3f8,115200n8 init=/hello";
+    const char *cmdline = "console=uart,io,0xEFF8,115200n8 init=/hello";
 
     /**
      * TODO:

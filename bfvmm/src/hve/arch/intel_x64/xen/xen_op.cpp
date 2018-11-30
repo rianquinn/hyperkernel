@@ -252,6 +252,18 @@ xen_op_handler::xen_op_handler(
     vcpu->pass_through_io_accesses(0x3fb);
     vcpu->pass_through_io_accesses(0x3fc);
     vcpu->pass_through_io_accesses(0x3fd);
+    vcpu->pass_through_io_accesses(0xEFF0);
+    vcpu->pass_through_io_accesses(0xEFF1);
+    vcpu->pass_through_io_accesses(0xEFF2);
+    vcpu->pass_through_io_accesses(0xEFF3);
+    vcpu->pass_through_io_accesses(0xEFF4);
+    vcpu->pass_through_io_accesses(0xEFF5);
+    vcpu->pass_through_io_accesses(0xEFF8);
+    vcpu->pass_through_io_accesses(0xEFF9);
+    vcpu->pass_through_io_accesses(0xEFFA);
+    vcpu->pass_through_io_accesses(0xEFFB);
+    vcpu->pass_through_io_accesses(0xEFFC);
+    vcpu->pass_through_io_accesses(0xEFFD);
 
     ADD_EPT_WRITE_HANDLER(xapic_handle_write);
     EMULATE_CPUID(0xBF00, cpuid_ack_handler);
