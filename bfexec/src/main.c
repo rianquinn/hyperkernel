@@ -330,7 +330,22 @@ static inline status_t vcpu_run_code(status_t s)
 static inline long vcpu_sleep_usec(status_t s)
 { return (s & VCPU_OP__SLEEP_USEC) >> 16; }
 
-void platform_sleep(long usec);
+#include <time.h>
+int usleep(int microseconds)
+{
+   struct timespec req, rem;
+
+   if(microseconds > 1000000) {
+        req.tv_sec = microseconds / 1000000;
+        req.tv_nsec = (microseconds % 1000000) * 1000;
+   }
+   else {
+        req.tv_sec = 0;
+        req.tv_nsec = microseconds * 1000;
+   }
+
+   return nanosleep(&req , &rem);
+}
 
 void *
 vcpu_op__run_vcpu(void *arg)
@@ -353,7 +368,7 @@ vcpu_op__run_vcpu(void *arg)
                 continue;
 
             case VCPU_OP__RUN_SLEEP:
-                platform_sleep(vcpu_sleep_usec(ret));
+                usleep(vcpu_sleep_usec(ret));
                 __vcpu_op__wake_vcpu(g_vm.vcpuid);
                 continue;
 
@@ -461,7 +476,7 @@ reserved_A000_t *g_reserved_A000 = 0;   /* Real-mode trampoline */
 
 // TODO: this should be a setting that is filled in from the command line.
 uint64_t g_ram_addr = 0x1000000;
-uint64_t g_ram_size = 0x3F0 << 20;
+uint64_t g_ram_size = 0x500 << 20;
 
 void *g_zero_page;
 
