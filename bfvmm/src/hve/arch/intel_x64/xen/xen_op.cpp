@@ -217,7 +217,7 @@ xen_op_handler::xen_op_handler(
     EMULATE_IO_INSTRUCTION(0x70, io_zero_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0x71, io_zero_handler, io_ignore_handler);
 
-    /// TODO: figure out what this one is for
+    EMULATE_IO_INSTRUCTION(0x2F9, io_zero_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0x3FE, io_zero_handler, io_ignore_handler);
 
     /// Ports used for TSC calibration against the PIT. See
@@ -942,6 +942,25 @@ xen_op_handler::cpuid_leaf7_handler(
 }
 
 bool
+xen_op_handler::cpuid_leaf15_handler(
+    gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info)
+{
+    bfignored(vcpu);
+    expects(m_tsc_freq_khz > 0);
+
+    // We pass the TSC directly through to linux, rather than the crystal.
+    // See the modifications in arch/x86/kernel/tsc.c:native_calibrate_tsc
+    // located at https://github.com/connojd/linux/tree/hyperkernel_1
+    //
+    info.rax = 1U;
+    info.rbx = 1U;
+    info.rcx = m_tsc_freq_khz * 1000U;
+    info.rdx = 0U;
+
+    return true;
+}
+
+bool
 xen_op_handler::cpuid_leaf80000001_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info)
 {
@@ -1141,8 +1160,9 @@ xen_op_handler::XENMEM_add_to_physmap_handler(
                     vcpu->map_gpa_4k<shared_info_t>(
                         xen_add_to_physmap_arg->gpfn << ::x64::pt::page_shift
                     );
+                m_shared_info->vcpu_info[0].time.pad0 = SIF_BFV_GUEST;
                 if (this->local_xenstore()) {
-                    m_shared_info->vcpu_info[0].time.pad0 = SIF_LOCAL_STORE;
+                    m_shared_info->vcpu_info[0].time.pad0 |= SIF_LOCAL_STORE;
                 }
                 break;
 
