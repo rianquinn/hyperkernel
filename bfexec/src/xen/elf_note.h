@@ -60,56 +60,56 @@ inline int is_xen_elf_note(const char *buf)
 inline void print_xen_elf_note(const struct xen_elf_note *note)
 {
     const char *desc = (const char *)&note->desc;
-    printf("Xen elfnote: ");
+    printf("Xen elfnote: \n");
 
     switch (note->type) {
         case XEN_ELFNOTE_GUEST_OS:
-            printf("Guest OS: %s", desc);
+            printf("Guest OS: %s\n", desc);
             break;
         case XEN_ELFNOTE_GUEST_VERSION:
-            printf("Guest version: %s", desc);
+            printf("Guest version: %s\n", desc);
             break;
         case XEN_ELFNOTE_XEN_VERSION:
-            printf("Xen version: %s", desc);
+            printf("Xen version: %s\n", desc);
             break;
         case XEN_ELFNOTE_FEATURES:
-            printf("Features: %s", desc);
+            printf("Features: %s\n", desc);
             break;
         case XEN_ELFNOTE_PAE_MODE:
-            printf("PAE mode: %s", desc);
+            printf("PAE mode: %s\n", desc);
             break;
         case XEN_ELFNOTE_LOADER:
-            printf("Loader: %s", desc);
+            printf("Loader: %s\n", desc);
             break;
         case XEN_ELFNOTE_VIRT_BASE:
-            printf("Virt base: %p", *(uint64_t *)desc);
+            printf("Virt base: 0x%" PRIx64 "\n", *(uint64_t *)desc);
             break;
         case XEN_ELFNOTE_INIT_P2M:
-            printf("Init p2m: %p", *(uint64_t *)desc);
+            printf("Init p2m: 0x%" PRIx64 "\n", *(uint64_t *)desc);
             break;
         case XEN_ELFNOTE_HYPERCALL_PAGE:
-            printf("Hypercall page: %p", *(uint64_t *)desc);
+            printf("Hypercall page: 0x%" PRIx64 "\n", *(uint64_t *)desc);
             break;
         case XEN_ELFNOTE_HV_START_LOW:
-            printf("HV start low: %p", *(uint64_t *)desc);
+            printf("HV start low: 0x%" PRIx64 "\n", *(uint64_t *)desc);
             break;
         case XEN_ELFNOTE_PADDR_OFFSET:
-            printf("Paddr offset: 0x%x", *(uint64_t *)desc);
+            printf("Paddr offset: 0x%" PRIx64 "\n", *(uint64_t *)desc);
             break;
         case XEN_ELFNOTE_SUPPORTED_FEATURES:
-            printf("Supported features: %p", *(uint32_t *)desc);
+            printf("Supported features: 0x%" PRIx32 "\n", *(uint32_t *)desc);
             break;
         case XEN_ELFNOTE_SUSPEND_CANCEL:
-            printf("Suspend cancel: %d", *(uint32_t *)desc);
+            printf("Suspend cancel: 0x%" PRIx32 "\n", *(uint32_t *)desc);
             break;
         case XEN_ELFNOTE_MOD_START_PFN:
-            printf("Mod start pfn: %p", *(uint32_t *)desc);
+            printf("Mod start pfn: 0x%" PRIx32 "\n", *(uint32_t *)desc);
             break;
         case XEN_ELFNOTE_PHYS32_ENTRY:
-            printf("PHYS32 entry: %p", *(uint32_t *)desc);
+            printf("PHYS32 entry: 0x%" PRIx32 "\n", *(uint32_t *)desc);
             break;
         default:
-            printf("Unknown type: %d", note->type);
+            printf("Unknown type: %d\n", note->type);
     }
 
     printf("\n");

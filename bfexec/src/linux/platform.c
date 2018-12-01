@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <inttypes.h>
 
 #include <sys/mman.h>
 #include <sys/resource.h>
@@ -96,8 +97,8 @@ int64_t platform_init(void)
 
     if (ml.rlim_cur != as.rlim_cur || ml.rlim_max != as.rlim_max) {
         printf("MEMLOCK sanity check failed (be sure to run as root):\n");
-        printf("    memlock cur: %x max: %x\n", ml.rlim_cur, ml.rlim_max);
-        printf("    as      cur: %x max: %x\n", as.rlim_cur, as.rlim_max);
+        printf("    memlock cur: %" PRIx64 " max: %" PRIx64 "\n", ml.rlim_cur, ml.rlim_max);
+        printf("    as      cur: %" PRIx64 " max: %" PRIx64 "\n", as.rlim_cur, as.rlim_max);
         return EXIT_FAILURE;
     }
 
