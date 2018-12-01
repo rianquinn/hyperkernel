@@ -269,11 +269,18 @@ xen_op_handler::xen_op_handler(
     );
 }
 
+static inline bool
+vmware_guest(void)
+{
+    return ::x64::cpuid::ebx::get(0x40000000) == 0x61774d56;
+}
+
 static uint64_t
 tsc_frequency(void)
 {
     using namespace ::x64::cpuid;
     using namespace ::intel_x64::cpuid;
+    using namespace ::eapis::intel_x64::time;
 
     // If we are running on VMWare, frequency information is reported through
     // a different CPUID leaf that is hypervisor specific so we should check
@@ -290,15 +297,15 @@ tsc_frequency(void)
     // - The result of this function is in kHz.
     // - The TSC core ratio is used instead of 0x16 as it is more accurate
 
-    if (!eapis::intel_x64::time::tsc_supported()) {
+    if (!tsc_supported()) {
         throw std::runtime_error("unsupported system: no TSC");
     }
 
-    if (!eapis::intel_x64::time::invariant_tsc_supported()) {
+    if (!invariant_tsc_supported()) {
         throw std::runtime_error("unsupported system: TSC is not invariant");
     }
 
-    if (ebx::get(0x40000000) == 0x61774d56) {
+    if (vmware_guest()) {
         if (auto freq = eax::get(0x40000010); freq != 0) {
             return freq;
         }
@@ -310,9 +317,7 @@ tsc_frequency(void)
         ::x64::cpuid::get(0x15, 0, 0, 0);
 
     if (denominator == 0 || numerator == 0 || freq == 0) {
-        auto bus = eapis::intel_x64::time::bus_freq_MHz();
-        auto tsc = eapis::intel_x64::time::tsc_freq_MHz(bus);
-        return tsc * 1000;
+        return tsc_freq_MHz(bus_freq_MHz()) * 1000;
     }
 
     freq /= 1000;
