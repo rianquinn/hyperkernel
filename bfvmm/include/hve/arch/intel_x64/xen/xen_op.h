@@ -148,6 +148,9 @@ private:
         gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info);
     bool cpuid_leaf7_handler(
         gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info);
+    bool cpuid_leaf15_handler(
+        gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info);
+
     bool cpuid_leaf80000001_handler(
         gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info);
     bool xen_cpuid_leaf1_handler(

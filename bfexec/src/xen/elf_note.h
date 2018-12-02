@@ -54,7 +54,7 @@ inline int is_xen_elf_note(const char *buf)
     if (note->namesz != 4) {
         return 0;
     }
-    return strncmp(note->name, "Xen", 4) == 0;
+    return strncmp((const char *)note->name, "Xen", 4) == 0;
 }
 
 inline void print_xen_elf_note(const struct xen_elf_note *note)

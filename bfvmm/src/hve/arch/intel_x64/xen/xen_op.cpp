@@ -217,7 +217,7 @@ xen_op_handler::xen_op_handler(
     EMULATE_IO_INSTRUCTION(0x70, io_zero_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0x71, io_zero_handler, io_ignore_handler);
 
-    /// TODO: figure out what this one is for
+    EMULATE_IO_INSTRUCTION(0x2F9, io_zero_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0x3FE, io_zero_handler, io_ignore_handler);
 
     /// Ports used for TSC calibration against the PIT. See
@@ -269,11 +269,18 @@ xen_op_handler::xen_op_handler(
     );
 }
 
+static inline bool
+vmware_guest(void)
+{
+    return ::x64::cpuid::ebx::get(0x40000000) == 0x61774d56;
+}
+
 static uint64_t
 tsc_frequency(void)
 {
     using namespace ::x64::cpuid;
     using namespace ::intel_x64::cpuid;
+    using namespace ::eapis::intel_x64::time;
 
     // If we are running on VMWare, frequency information is reported through
     // a different CPUID leaf that is hypervisor specific so we should check
@@ -290,15 +297,15 @@ tsc_frequency(void)
     // - The result of this function is in kHz.
     // - The TSC core ratio is used instead of 0x16 as it is more accurate
 
-    if (!eapis::intel_x64::time::tsc_supported()) {
+    if (!tsc_supported()) {
         throw std::runtime_error("unsupported system: no TSC");
     }
 
-    if (!eapis::intel_x64::time::invariant_tsc_supported()) {
+    if (!invariant_tsc_supported()) {
         throw std::runtime_error("unsupported system: TSC is not invariant");
     }
 
-    if (ebx::get(0x40000000) == 0x61774d56) {
+    if (vmware_guest()) {
         if (auto freq = eax::get(0x40000010); freq != 0) {
             return freq;
         }
@@ -310,9 +317,7 @@ tsc_frequency(void)
         ::x64::cpuid::get(0x15, 0, 0, 0);
 
     if (denominator == 0 || numerator == 0 || freq == 0) {
-        auto bus = eapis::intel_x64::time::bus_freq_MHz();
-        auto tsc = eapis::intel_x64::time::tsc_freq_MHz(bus);
-        return tsc * 1000;
+        return tsc_freq_MHz(bus_freq_MHz()) * 1000;
     }
 
     freq /= 1000;
@@ -560,6 +565,10 @@ xen_op_handler::xapic_handle_write(
         case initial_count::indx:
             m_vcpu->lapic_write(idx, val);
             break;
+        case 0xd0:
+            bfalert_info(0, "received perf interrupt");
+            break;
+
         default:
             bfalert_nhex(0, "unhandled xapic write indx:", idx);
             return false;
@@ -933,6 +942,25 @@ xen_op_handler::cpuid_leaf7_handler(
 }
 
 bool
+xen_op_handler::cpuid_leaf15_handler(
+    gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info)
+{
+    bfignored(vcpu);
+    expects(m_tsc_freq_khz > 0);
+
+    // We pass the TSC directly through to linux, rather than the crystal.
+    // See the modifications in arch/x86/kernel/tsc.c:native_calibrate_tsc
+    // located at https://github.com/connojd/linux/tree/hyperkernel_1
+    //
+    info.rax = 1U;
+    info.rbx = 1U;
+    info.rcx = m_tsc_freq_khz * 1000U;
+    info.rdx = 0U;
+
+    return true;
+}
+
+bool
 xen_op_handler::cpuid_leaf80000001_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info)
 {
@@ -1132,8 +1160,9 @@ xen_op_handler::XENMEM_add_to_physmap_handler(
                     vcpu->map_gpa_4k<shared_info_t>(
                         xen_add_to_physmap_arg->gpfn << ::x64::pt::page_shift
                     );
+                m_shared_info->vcpu_info[0].time.pad0 = SIF_BFV_GUEST;
                 if (this->local_xenstore()) {
-                    m_shared_info->vcpu_info[0].time.pad0 = SIF_LOCAL_STORE;
+                    m_shared_info->vcpu_info[0].time.pad0 |= SIF_LOCAL_STORE;
                 }
                 break;
 
