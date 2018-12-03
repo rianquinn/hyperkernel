@@ -21,6 +21,7 @@
 #include <hve/arch/intel_x64/lapic.h>
 #include <hve/arch/intel_x64/vcpu.h>
 #include <hve/arch/intel_x64/fault.h>
+#include <hve/arch/intel_x64/vtd/vtd_sandbox.h>
 
 //------------------------------------------------------------------------------
 // Fault Handlers
@@ -106,6 +107,10 @@ vcpu::vcpu(
 {
     if (this->is_dom0()) {
         this->write_dom0_guest_state(domain);
+        vtd_sandbox::visr_device::enable(this);
+        vtd_sandbox::interrupt_remapping::enable(this);
+        vtd_sandbox::hidden_nic::enable(this);
+        // vtd_sandbox::dma_remapping::init(this, g_hdvm_ept_mmap, g_ndvm_ept_mmap);
     }
     else {
         this->write_domU_guest_state(domain);
