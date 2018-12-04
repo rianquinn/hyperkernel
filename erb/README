@@ -1,10 +1,13 @@
+Before building a guest, be sure to run the setup script for your
+system at scripts/util/setup-erb-*
+
 ERB provides three targets (for now):
 
     make vm
     make vm-clean
     make vm-distclean
 
-If BUILD_GUEST=ON, then the vm target will be added to all. By default,
+If BUILD_GUEST=ON (the default), then the vm target will be added to all. By default,
 it downloads a linux kernel for the image. If you have a local development
 copy, make sure to tell cmake about the path e.g.:
 
