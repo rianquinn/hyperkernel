@@ -75,33 +75,48 @@ public:
 
     mmap()
     {
-        bfdebug_info(0, "VT-d mmap created");
+        // bfdebug_info(0, "VT-d mmap created");
     }
 
     void
-    init (
-        eapis::intel_x64::ept::mmap &hdvm_ept_mmap,
-        eapis::intel_x64::ept::mmap &ndvm_ept_mmap
-    )
+    init()
     {
         m_root_table = allocate_root_table();
-        m_hdvm_context_table = allocate_context_table();
-        m_ndvm_context_table = allocate_context_table();
 
-        init_root_table();
-        init_context_table(m_hdvm_context_table, hdvm_ept_mmap, 1);
-        init_context_table(m_ndvm_context_table, ndvm_ept_mmap, 2);
-
-        // Make sure the DMA remapping table entries make it to memory!
+        // Make sure the DMA root table entries make it to memory!
         ::x64::cache::wbinvd();
-        dump();
+    }
+
+    void
+    map_bus(uint64_t bus, uint64_t dma_domain_id, eapis::intel_x64::ept::mmap &mmap) 
+    {
+        // Lookup the root entry associated with the given bus
+        auto &rte = m_root_table.virt_addr.at(bus);
+        if(intel_x64::vtd::rte::present::is_enabled(rte)) {
+            // bferror_nhex(0, "Bus already mapped to VT-d DMA domain:", bus);
+            return;
+        }
+
+        // Allocate a new context table for each bus
+        auto ct = allocate_context_table();
+        init_context_table(ct, mmap, dma_domain_id);
+        intel_x64::vtd::rte::present::enable(rte);
+        intel_x64::vtd::rte::context_table_pointer::set(rte, (ct.phys_addr) >> 12);
+        // bfdebug_info(0, "Bus mapped for DMA translation");
+        // bfdebug_subnhex(0, "bus number", bus);
+        // bfdebug_subnhex(0, "domain", dma_domain_id);
+        // bfdebug_subnhex(0, "translation table base address", mmap.eptp());
+
+        // Make sure the root table makes it to memory!
+        ::x64::cache::wbinvd();
     }
 
     ~mmap()
     {
+        // TODO: walk the root table and free all allocated context tables
         free(m_root_table);
-        free_context_table(m_hdvm_context_table);
-        free_context_table(m_ndvm_context_table);
+        // free_context_table(m_hdvm_context_table);
+        // free_context_table(m_ndvm_context_table);
     }
 
     phys_addr_t
@@ -166,21 +181,21 @@ private:
         return ptrs;
     }
 
-    void
-    init_root_table()
-    {
-        // Make all root table entries present and mapped to the same context
-        // table. This effectively maps every PCI bus to the same configuration
-        for (auto &rte : m_root_table.virt_addr) {
-            intel_x64::vtd::rte::present::enable(rte);
-            intel_x64::vtd::rte::context_table_pointer::set(rte, (m_hdvm_context_table.phys_addr) >> 12);
-        }
-
-        // For now, reasign the entire PCI bus that the NIC is attached to a
-        // seperate DMA remapping context, with different DMA page tables
-        auto &rte = m_root_table.virt_addr.at(2);
-        intel_x64::vtd::rte::context_table_pointer::set(rte, (m_ndvm_context_table.phys_addr) >> 12);
-    }
+    // void
+    // init_root_table()
+    // {
+    //     // Make all root table entries present and mapped to the same context
+    //     // table. This effectively maps every PCI bus to the same configuration
+    //     for (auto &rte : m_root_table.virt_addr) {
+    //         intel_x64::vtd::rte::present::enable(rte);
+    //         intel_x64::vtd::rte::context_table_pointer::set(rte, (m_hdvm_context_table.phys_addr) >> 12);
+    //     }
+    //
+    //     // For now, reasign the entire PCI bus that the NIC is attached to a
+    //     // seperate DMA remapping context, with different DMA page tables
+    //     auto &rte = m_root_table.virt_addr.at(2);
+    //     intel_x64::vtd::rte::context_table_pointer::set(rte, (m_ndvm_context_table.phys_addr) >> 12);
+    // }
 
     void
     init_context_table(

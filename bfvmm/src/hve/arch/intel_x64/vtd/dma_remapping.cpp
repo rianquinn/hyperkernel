@@ -12,7 +12,8 @@ namespace dma_remapping
 {
 
 intel_x64::vtd::mmap g_vtd_mmap{};
-bfn::once_flag init_flag{};
+bfn::once_flag vtd_mmap_init_flag{};
+bfn::once_flag remapping_enabled_flag{};
 bfn::once_flag fini_flag{};
 
 using namespace eapis::intel_x64;
@@ -60,7 +61,7 @@ enable_dma_remapping(intel_x64::vtd::mmap &vtd_mmap)
     intel_x64::vtd::iommu::rtaddr_reg::set(root_table_value);
     intel_x64::vtd::iommu::gcmd_reg::srtp::enable();
     while(1) {
-        volatile auto keep_waiting = intel_x64::vtd::iommu::gsts_reg::rtps::is_disabled();
+        auto keep_waiting = intel_x64::vtd::iommu::gsts_reg::rtps::is_disabled();
         if (!keep_waiting) break;
         // bfdebug_info(0, "... waiting on root table pointer status bit ...");
     }
@@ -99,7 +100,7 @@ enable_dma_remapping(intel_x64::vtd::mmap &vtd_mmap)
     intel_x64::vtd::iommu::gcmd_reg::te::enable(gsts_reg_val);
     intel_x64::vtd::iommu::gcmd_reg::set(gsts_reg_val);
     while(1) {
-        volatile auto keep_waiting = intel_x64::vtd::iommu::gsts_reg::tes::is_disabled();
+        auto keep_waiting = intel_x64::vtd::iommu::gsts_reg::tes::is_disabled();
         if (!keep_waiting) break;
         // bfdebug_info(0, "... waiting on translation enable status bit ...");
     }
@@ -138,7 +139,7 @@ disable_dma_remapping()
         // bfdebug_info(0, "Disabling DMA Remapping");
         intel_x64::vtd::iommu::gcmd_reg::te::disable();
         while(1) {
-            volatile auto keep_waiting = intel_x64::vtd::iommu::gsts_reg::tes::is_enabled();
+            auto keep_waiting = intel_x64::vtd::iommu::gsts_reg::tes::is_enabled();
             if (!keep_waiting) break;
             // bfdebug_info(0, "... waiting on translation enable status bit ...");
         }
@@ -153,7 +154,7 @@ disable_dma_remapping()
         intel_x64::vtd::iommu::rtaddr_reg::set(0);
         intel_x64::vtd::iommu::gcmd_reg::srtp::enable();
         while(1) {
-            volatile auto keep_waiting = intel_x64::vtd::iommu::gsts_reg::rtps::is_disabled();
+            auto keep_waiting = intel_x64::vtd::iommu::gsts_reg::rtps::is_disabled();
             if (!keep_waiting) break;
             // bfdebug_info(0, "... waiting on root table pointer status bit ...");
         }
@@ -161,39 +162,35 @@ disable_dma_remapping()
     }
 }
 
+// void
+// handle_fini(bfobject *data)
+// {
+//     bfignored(data);
+//     bfn::call_once(fini_flag, [&] {
+//         disable_dma_remapping();
+//     });
+// }
+
 void
-handle_init(bfobject *data)
+map_bus(uint64_t bus, uint64_t dma_domain_id, eapis::intel_x64::ept::mmap &mmap) 
 {
-    bfignored(data);
-    enable_dma_remapping(g_vtd_mmap);
+    bfn::call_once(vtd_mmap_init_flag, [&] {
+        g_vtd_mmap.init();
+    });
+
+    g_vtd_mmap.map_bus(bus, dma_domain_id, mmap);
 }
 
 void
-handle_fini(bfobject *data)
+enable(gsl::not_null<eapis::intel_x64::vcpu *> vcpu)
 {
-    bfignored(data);
-    bfn::call_once(fini_flag, [&] {
-        disable_dma_remapping();
-    });
-}
-
-void
-init(
-    gsl::not_null<eapis::intel_x64::vcpu *> vcpu,
-    eapis::intel_x64::ept::mmap &hdvm_ept_mmap,
-    eapis::intel_x64::ept::mmap &ndvm_ept_mmap
-)
-{
-    bfn::call_once(init_flag, [&] {
-        g_vtd_mmap.init(hdvm_ept_mmap, ndvm_ept_mmap);
-        vcpu->add_init_delegate(
-            bfvmm::vcpu::init_delegate_t::create<handle_init>()
-        );
+    bfn::call_once(vtd_mmap_init_flag, [&] {
+        enable_dma_remapping(g_vtd_mmap);
     });
 
-    vcpu->add_fini_delegate(
-        bfvmm::vcpu::fini_delegate_t::create<handle_fini>()
-    );
+    // vcpu->add_fini_delegate(
+    //     bfvmm::vcpu::fini_delegate_t::create<handle_fini>()
+    // );
 }
 
 }
