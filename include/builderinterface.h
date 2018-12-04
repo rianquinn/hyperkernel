@@ -31,7 +31,7 @@ extern "C" {
 /* -------------------------------------------------------------------------- */
 
 #ifndef BUILDER_NAME
-#define BUILDER_NAME "Bareflank Domain Builder"
+#define BUILDER_NAME "bareflank_builder"
 #endif
 
 #ifndef BUILDER_MAJOR
@@ -42,9 +42,38 @@ extern "C" {
 #define BUILDER_DEVICETYPE 0xF00D
 #endif
 
-#define IOCTL_LOAD_ELF_SIZE_CMD 0x801
-#define IOCTL_LOAD_ELF_CMD 0x802
-#define IOCTL_LOAD_RAM_SIZE_CMD 0x803
+#define IOCTL_LOAD_ELF_CMD 0x801
+
+/**
+ * @struct load_elf_args
+ *
+ * This structure is used to load and ELF file as a guest VM. This is the
+ * information the builder needs to create a domain and load its resources
+ * prior to execution.
+ *
+ * @var load_elf_args::file
+ *     the ELF file to load
+ * @var load_elf_args::file_size
+ *     the length of the ELF file to load
+ * @var load_elf_args::cmdline
+ *     the command line arguments to pass to the Linux kernel on boot
+ * @var load_elf_args::cmdline_length
+ *     the length of the command line arguments
+ * @var load_elf_args::domainid
+ *     the domain ID of the VM to create and load
+ * @var load_elf_args::ram_size
+ *     the amount of RAM to give to the domain
+ */
+struct load_elf_args {
+    const char *file;
+    uint64_t file_length;
+
+    const char *cmdline;
+    uint64_t cmdline_length;
+
+    uint64_t domainid;
+    uint64_t ram_size;
+};
 
 /* -------------------------------------------------------------------------- */
 /* Linux Interfaces                                                           */
@@ -52,9 +81,7 @@ extern "C" {
 
 #ifdef __linux__
 
-#define IOCTL_LOAD_ELF_SIZE _IOW(BUILDER_MAJOR, IOCTL_LOAD_ELF_SIZE_CMD, uint64_t *)
-#define IOCTL_LOAD_ELF _IOW(BUILDER_MAJOR, IOCTL_LOAD_ELF_CMD, char *)
-#define IOCTL_LOAD_RAM_SIZE _IOW(BUILDER_MAJOR, IOCTL_LOAD_RAM_SIZE_CMD, uint64_t *)
+#define IOCTL_LOAD_ELF _IOW(BUILDER_MAJOR, IOCTL_LOAD_ELF_CMD, struct load_elf_args *)
 
 #endif
 
@@ -81,7 +108,6 @@ DEFINE_GUID(
     0x44);
 
 #define IOCTL_LOAD_ELF CTL_CODE(BUILDER_DEVICETYPE, IOCTL_LOAD_ELF_CMD, METHOD_IN_DIRECT, FILE_WRITE_DATA)
-#define IOCTL_LOAD_RAM_SIZE CTL_CODE(BUILDER_DEVICETYPE, IOCTL_LOAD_RAM_SIZE_CMD, METHOD_IN_DIRECT, FILE_WRITE_DATA)
 
 #endif
 

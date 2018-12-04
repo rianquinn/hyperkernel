@@ -31,13 +31,6 @@
 #include <bfplatform.h>
 
 /* -------------------------------------------------------------------------- */
-/* Global                                                                     */
-/* -------------------------------------------------------------------------- */
-
-static uint64_t g_elf_size = 0;
-static uint64_t g_ram_size = 0;
-
-/* -------------------------------------------------------------------------- */
 /* Misc Device                                                                */
 /* -------------------------------------------------------------------------- */
 
@@ -62,22 +55,21 @@ dev_release(struct inode *inode, struct file *file)
 }
 
 static long
-ioctl_load_elf(const char *file)
+ioctl_load_elf(const struct load_elf_args *args)
 {
-    char *buf;
-    int64_t ret;
+    // int64_t ret;
 
-    buf = platform_alloc_rw(g_elf_size);
-    if (buf == NULL) {
-        BFALERT("IOCTL_ADD_MODULE: failed to allocate memory for the module\n");
-        return BF_IOCTL_FAILURE;
-    }
+    // buf = platform_alloc_rw(g_elf_size);
+    // if (buf == NULL) {
+    //     BFALERT("IOCTL_ADD_MODULE: failed to allocate memory for the module\n");
+    //     return BF_IOCTL_FAILURE;
+    // }
 
-    ret = copy_from_user(buf, file, g_elf_size);
-    if (ret != 0) {
-        BFALERT("IOCTL_ADD_MODULE: failed to copy memory from userspace\n");
-        goto failed;
-    }
+    // ret = copy_from_user(buf, file, g_elf_size);
+    // if (ret != 0) {
+    //     BFALERT("IOCTL_ADD_MODULE: failed to copy memory from userspace\n");
+    //     goto failed;
+    // }
 
 /**
     ret = common_add_module(buf, g_elf_size);
@@ -88,55 +80,15 @@ ioctl_load_elf(const char *file)
     }
 */
 
-    BFDEBUG("IOCTL_ADD_MODULE: succeeded\n");
-    return BF_IOCTL_SUCCESS;
+//     BFDEBUG("IOCTL_ADD_MODULE: succeeded\n");
+//     return BF_IOCTL_SUCCESS;
 
-failed:
+// failed:
 
-    platform_free_rw(buf, g_elf_size);
+//     platform_free_rw(buf, g_elf_size);
 
     BFALERT("IOCTL_ADD_MODULE: failed\n");
     return BF_IOCTL_FAILURE;
-}
-
-static long
-ioctl_load_elf_size(uint64_t *len)
-{
-    int64_t ret;
-
-    if (len == 0) {
-        BFALERT("IOCTL_LOAD_ELF_SIZE: failed with len == NULL\n");
-        return BF_IOCTL_FAILURE;
-    }
-
-    ret = copy_from_user(&g_elf_size, len, sizeof(uint64_t));
-    if (ret != 0) {
-        BFALERT("IOCTL_LOAD_ELF_SIZE: failed to copy memory from userspace\n");
-        return BF_IOCTL_FAILURE;
-    }
-
-    BFDEBUG("IOCTL_LOAD_ELF_SIZE: succeeded\n");
-    return BF_IOCTL_SUCCESS;
-}
-
-static long
-ioctl_load_ram_size(uint64_t *len)
-{
-    int64_t ret;
-
-    if (len == 0) {
-        BFALERT("IOCTL_LOAD_RAM_SIZE: failed with len == NULL\n");
-        return BF_IOCTL_FAILURE;
-    }
-
-    ret = copy_from_user(&g_ram_size, len, sizeof(uint64_t));
-    if (ret != 0) {
-        BFALERT("IOCTL_LOAD_RAM_SIZE: failed to copy memory from userspace\n");
-        return BF_IOCTL_FAILURE;
-    }
-
-    BFDEBUG("IOCTL_LOAD_RAM_SIZE: succeeded\n");
-    return BF_IOCTL_SUCCESS;
 }
 
 static long
@@ -147,13 +99,7 @@ dev_unlocked_ioctl(
 
     switch (cmd) {
         case IOCTL_LOAD_ELF:
-            return ioctl_load_elf((char *)arg);
-
-        case IOCTL_LOAD_ELF_SIZE:
-            return ioctl_load_elf_size((uint64_t *)arg);
-
-        case IOCTL_LOAD_RAM_SIZE:
-            return ioctl_load_ram_size((uint64_t *)arg);
+            return ioctl_load_elf((struct load_elf_args *)arg);
 
         default:
             return -EINVAL;
@@ -163,13 +109,14 @@ dev_unlocked_ioctl(
 static struct file_operations fops = {
     .open = dev_open,
     .release = dev_release,
-    .unlocked_ioctl = dev_unlocked_ioctl,
+    .unlocked_ioctl = dev_unlocked_ioctl
 };
 
 static struct miscdevice builder_dev = {
-    MISC_DYNAMIC_MINOR,
-    BUILDER_NAME,
-    &fops
+    .minor = MISC_DYNAMIC_MINOR,
+    .name = BUILDER_NAME,
+    .fops = &fops,
+    .mode = 0666
 };
 
 /* -------------------------------------------------------------------------- */

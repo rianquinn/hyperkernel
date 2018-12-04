@@ -19,3 +19,4 @@ tags
 *.mod.c
 *.mod.o
 *.order
+*.cache.mk
