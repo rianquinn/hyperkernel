@@ -51,9 +51,10 @@ add_config(
 add_config(
     CONFIG_NAME ERB_IMAGE
     CONFIG_TYPE STRING
-    DEFAULT_VAL "tiny"
+    DEFAULT_VAL "demo-gigabyte"
     DESCRIPTION "The guest image to build"
     OPTIONS "tiny"
+    OPTIONS "demo-gigabyte"
 )
 
 add_config(
