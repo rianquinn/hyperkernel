@@ -51,7 +51,7 @@ add_config(
 add_config(
     CONFIG_NAME ERB_IMAGE
     CONFIG_TYPE STRING
-    DEFAULT_VAL "demo-gigabyte"
+    DEFAULT_VAL "tiny"
     DESCRIPTION "The guest image to build"
     OPTIONS "tiny"
     OPTIONS "demo-gigabyte"
@@ -82,7 +82,7 @@ add_config(
 add_config(
     CONFIG_NAME ERB_ROOTFS_OVERLAY
     CONFIG_TYPE STRING
-    DEFAULT_VAL ""
+    DEFAULT_VAL "${HK_ERB_DIR}/image/${ERB_IMAGE}/overlay"
     DESCRIPTION "Directory to overlay onto the rootfs"
 )
 

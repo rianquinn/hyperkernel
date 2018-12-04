@@ -364,7 +364,6 @@ vcpu_op__run_vcpu(void *arg)
 
             case VCPU_OP__RUN_SLEEP:
                 usleep(vcpu_sleep_usec(ret));
-                __vcpu_op__wake_vcpu(g_vm.vcpuid);
                 continue;
 
             default:
@@ -471,7 +470,7 @@ reserved_A000_t *g_reserved_A000 = 0;   /* Real-mode trampoline */
 
 // TODO: this should be a setting that is filled in from the command line.
 uint64_t g_ram_addr = 0x1000000;
-uint64_t g_ram_size = 32 << 20;
+uint64_t g_ram_size = 128 << 20;
 
 void *g_zero_page;
 
