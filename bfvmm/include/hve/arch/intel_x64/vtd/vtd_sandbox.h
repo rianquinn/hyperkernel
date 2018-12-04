@@ -25,11 +25,8 @@ namespace visr_device
 
 namespace dma_remapping
 {
-    void init(
-        gsl::not_null<eapis::intel_x64::vcpu *> vcpu,
-        eapis::intel_x64::ept::mmap &hdvm_ept_mmap,
-        eapis::intel_x64::ept::mmap &ndvm_ept_mmap
-    );
+    void enable(gsl::not_null<eapis::intel_x64::vcpu *> vcpu);
+    void map_bus(uint64_t bus, uint64_t dma_domain_id, eapis::intel_x64::ept::mmap &mmap);
 }
 
 namespace interrupt_remapping

@@ -101,7 +101,7 @@ interrupt_vector_cpuid(
             intel_x64::vtd::iommu::irta_reg::eime::disable(irta_value);
             intel_x64::vtd::iommu::irta_reg::s::set(irta_value, 0x9);
             intel_x64::vtd::iommu::irta_reg::set(irta_value);
-            intel_x64::vtd::iommu::irta_reg::dump(0, irta_value);
+            // intel_x64::vtd::iommu::irta_reg::dump(0, irta_value);
 
             gsts_reg_val = ::intel_x64::vtd::iommu::gsts_reg::get();
             gsts_reg_val = gsts_reg_val & 0x96FFFFFF;
@@ -113,7 +113,7 @@ interrupt_vector_cpuid(
                 // bfdebug_info(0, "... waiting on interrupt remapping table pointer status bit ...");
             }
             // bfdebug_info(0, "done");
-            intel_x64::vtd::iommu::gsts_reg::dump(0);
+            // intel_x64::vtd::iommu::gsts_reg::dump(0);
 
             // -------------------------------------------------------------------------
             // Enable Interrupt compatibility mode
@@ -129,7 +129,7 @@ interrupt_vector_cpuid(
                 // bfdebug_info(0, "... waiting on interrupt compatibility enable status bit ...");
             }
             // bfdebug_info(0, "done");
-            intel_x64::vtd::iommu::gsts_reg::dump(0);
+            // intel_x64::vtd::iommu::gsts_reg::dump(0);
 
             // -------------------------------------------------------------------------
             // Enable Interrupt remapping
@@ -145,7 +145,7 @@ interrupt_vector_cpuid(
                 // bfdebug_info(0, "... waiting on interrupt remapping enable status bit ...");
             }
             // bfdebug_info(0, "done");
-            intel_x64::vtd::iommu::gsts_reg::dump(0);
+            // intel_x64::vtd::iommu::gsts_reg::dump(0);
 
             // -------------------------------------------------------------------------
             // Enable Interrupt compatibility mode again
@@ -166,14 +166,14 @@ interrupt_vector_cpuid(
             for (auto i = 0; i < 1000000; i++) {
                 if(intel_x64::vtd::iommu::fsts_reg::ppf::is_enabled()) {
                     printf("\n");
-                    bferror_info(0, "Fault occurred during interrup remapping initialization:");
+                    bferror_info(0, "Fault occurred during interrupt remapping initialization:");
                     intel_x64::vtd::iommu::frr::dump(0);
                     printf("\n");
                     break;
                 }
             }
 
-            intel_x64::vtd::iommu::gsts_reg::dump(0);
+            // intel_x64::vtd::iommu::gsts_reg::dump(0);
         }
     });
 
