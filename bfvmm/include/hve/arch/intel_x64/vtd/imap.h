@@ -52,7 +52,7 @@ public:
 
     imap()
     {
-        bfdebug_info(0, "VT-d imap created");
+        // bfdebug_info(0, "VT-d imap created");
     }
 
     void
