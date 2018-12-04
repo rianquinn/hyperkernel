@@ -32,6 +32,7 @@ namespace hyperkernel::intel_x64
 
 domain::domain(domainid_type domainid) :
     hyperkernel::domain{domainid},
+    m_tss{make_page<bfvmm::x64::tss>()},
     m_rsdp{make_page<rsdp_t>()},
     m_xsdt{make_page<xsdt_t>()},
     m_madt{make_page<madt_t>()},
@@ -61,7 +62,7 @@ domain::setup_domU()
 
     m_gdt_phys = g_mm->virtint_to_physint(m_gdt.base());
     m_idt_phys = g_mm->virtint_to_physint(m_idt.base());
-    m_tss_phys = g_mm->virtptr_to_physint(&m_tss);
+    m_tss_phys = g_mm->virtptr_to_physint(m_tss.get());
 
     m_gdt_virt = 0x1000;
     m_idt_virt = 0x2000;
