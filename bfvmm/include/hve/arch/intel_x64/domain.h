@@ -269,7 +269,6 @@ private:
 
 private:
 
-    bfvmm::x64::tss m_tss{};
     bfvmm::x64::gdt m_gdt{512};
     bfvmm::x64::idt m_idt{256};
 
@@ -286,6 +285,7 @@ private:
     eapis::intel_x64::ept::mmap m_ept_map;
     eapis::intel_x64::vcpu_global_state_t m_vcpu_global_state;
 
+    page_ptr<bfvmm::x64::tss> m_tss;
     page_ptr<rsdp_t> m_rsdp;
     page_ptr<xsdt_t> m_xsdt;
     page_ptr<madt_t> m_madt;

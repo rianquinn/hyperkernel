@@ -26,10 +26,12 @@ include_dependency(HK_DEPEND_DIR buildroot)
 # ------------------------------------------------------------------------------
 
 add_custom_target(vm COMMAND make O=${BR_BIN_DIR} -C ${BR_SRC_DIR})
+add_custom_target(vm-run COMMAND ${SUDO} ${USERSPACE_PREFIX_PATH}/bin/bfexec ${BR_BIN_DIR}/images/vmlinux)
 add_custom_target(vm-clean COMMAND make O=${BR_BIN_DIR} -C ${BR_SRC_DIR} clean)
 add_custom_target(vm-distclean COMMAND make O=${BR_BIN_DIR} -C ${BR_SRC_DIR} distclean)
 
 add_custom_target_info(TARGET vm COMMENT "Build the VM")
+add_custom_target_info(TARGET vm-run COMMENT "Run the VM")
 add_custom_target_info(TARGET vm-clean COMMENT "Clean build files")
 add_custom_target_info(TARGET vm-distclean COMMENT "Clean build and config files")
 

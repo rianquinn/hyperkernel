@@ -44,8 +44,10 @@ set(BR_CONFIG_LINUX_OUT ${BR_BIN_DIR}/.linux-config CACHE INTERNAL "")
 
 if(ERB_LINUX_OVERRIDE)
     set(BR_OVERRIDE_IN ${HK_ERB_DIR}/image/${ERB_IMAGE}/override.mk.in CACHE INTERNAL "")
+    message(STATUS "Using linux source: ${ERB_LINUX_OVERRIDE}")
 else()
     set(BR_OVERRIDE_IN ${HK_ERB_DIR}/image/null-override.mk CACHE INTERNAL "")
+    message(STATUS "Using linux source: https://github.com/connojd/linux.git")
 endif()
 
 set(BR_OVERRIDE_OUT ${BR_BIN_DIR}/override.mk CACHE INTERNAL "")
@@ -68,7 +70,6 @@ download_dependency(
 
 add_dependency(
     buildroot userspace
-    BUILD_ALWAYS ON
     CONFIGURE_COMMAND ${CMAKE_COMMAND} -E touch_nocreate kludge
     BUILD_COMMAND make O=${BR_BIN_DIR} -C ${BR_SRC_DIR} olddefconfig
           COMMAND make O=${BR_BIN_DIR} -C ${BR_SRC_DIR}
