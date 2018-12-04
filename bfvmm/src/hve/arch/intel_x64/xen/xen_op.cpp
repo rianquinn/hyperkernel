@@ -189,7 +189,7 @@ xen_op_handler::xen_op_handler(
     EMULATE_CPUID(0xF, cpuid_zero_handler);
     EMULATE_CPUID(0x10, cpuid_zero_handler);
 
-    ADD_CPUID_HANDLER(0x15, cpuid_pass_through_handler);            // TODO: 0 reserved bits
+    ADD_CPUID_HANDLER(0x15, cpuid_leaf15_handler);            // TODO: 0 reserved bits
     ADD_CPUID_HANDLER(0x16, cpuid_pass_through_handler);            // TODO: 0 reserved bits
     ADD_CPUID_HANDLER(0x80000000, cpuid_pass_through_handler);      // TODO: 0 reserved bits
     ADD_CPUID_HANDLER(0x80000001, cpuid_leaf80000001_handler);      // TODO: 0 reserved bits
@@ -353,8 +353,15 @@ xen_op_handler::handle_hlt(gsl::not_null<vcpu_t *> vcpu)
     const auto tsc_ticks = pet_ticks << m_pet_shift;
     const auto usec = tsc_ticks / (m_tsc_freq_khz / 1000U);
 
-    m_vcpu->sleep();
+    /// We clear Linux's sti blocking because we are sleeping from
+    /// a hlt instruction. Linux does sti right before the hlt, so
+    /// blocking_by_sti is set. If we don't clear it and try to inject
+    /// later, VM-entry will fail.
+    ///
+
+    ::intel_x64::vmcs::guest_interruptibility_state::blocking_by_sti::disable();
     m_vcpu->disable_vmx_preemption_timer();
+    m_vcpu->queue_timer_interrupt();
     m_vcpu->parent_vcpu()->load();
     m_vcpu->parent_vcpu()->return_and_sleep(usec);
 
@@ -941,21 +948,26 @@ xen_op_handler::cpuid_leaf7_handler(
     return true;
 }
 
+// This handler is only needed when we are running on vmware.
+// It returns the TSC Hz directly in eax rather than the crystal
+// Hz. Since (rbx / rax) = 1, the result returned from
+// arch/x86/kernel/tsc.c:native_calibrate_tsc is correct. This
+// is temporary until we find a better solution; if native_calibrate_tsc
+// changes then this will probably break.
+//
 bool
 xen_op_handler::cpuid_leaf15_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info)
 {
     bfignored(vcpu);
-    expects(m_tsc_freq_khz > 0);
 
-    // We pass the TSC directly through to linux, rather than the crystal.
-    // See the modifications in arch/x86/kernel/tsc.c:native_calibrate_tsc
-    // located at https://github.com/connojd/linux/tree/hyperkernel_1
-    //
-    info.rax = 1U;
-    info.rbx = 1U;
-    info.rcx = m_tsc_freq_khz * 1000U;
-    info.rdx = 0U;
+    if (vmware_guest()) {
+        expects(m_tsc_freq_khz > 0);
+        info.rax = 1U;
+        info.rbx = 1U;
+        info.rcx = m_tsc_freq_khz * 1000U;
+        info.rdx = 0U;
+    }
 
     return true;
 }
@@ -1160,7 +1172,9 @@ xen_op_handler::XENMEM_add_to_physmap_handler(
                     vcpu->map_gpa_4k<shared_info_t>(
                         xen_add_to_physmap_arg->gpfn << ::x64::pt::page_shift
                     );
-                m_shared_info->vcpu_info[0].time.pad0 = SIF_BFV_GUEST;
+                if (vmware_guest()) {
+                    m_shared_info->vcpu_info[0].time.pad0 = SIF_BFV_GUEST;
+                }
                 if (this->local_xenstore()) {
                     m_shared_info->vcpu_info[0].time.pad0 |= SIF_LOCAL_STORE;
                 }
