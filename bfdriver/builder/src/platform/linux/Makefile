@@ -1,6 +1,6 @@
 #
-# Bareflank Hyperkernel
-# Copyright (C) 2018 Assured Information Security, Inc.
+# Bareflank Hypervisor
+# Copyright (C) 2015 Assured Information Security, Inc.
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
@@ -16,19 +16,21 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-TARGET_MODULE:=hkd
+TARGET_MODULE:=builder
 
 ifneq ($(KERNELRELEASE),)
 	obj-m := $(TARGET_MODULE).o
 
 	$(TARGET_MODULE)-objs += entry.o
+	$(TARGET_MODULE)-objs += platform.o
+	$(TARGET_MODULE)-objs += ../../common.o
 
 	EXTRA_CFLAGS += -DKERNEL
 	EXTRA_CFLAGS += -DLINUX_KERNEL
-	EXTRA_CFLAGS += -I$(src)/../../../../bfsdk/include/
-
-# TODO: pass in cmake dirs
-	EXTRA_CFLAGS += -I$(src)/../../../../../hypervisor/bfsdk/include/
+	EXTRA_CFLAGS += -I$(SOURCE_ROOT_DIR)/bfsdk/include/
+	EXTRA_CFLAGS += -I$(SOURCE_ROOT_DIR)/bfelf_loader/include/
+	EXTRA_CFLAGS += -I$(src)/../../../include/
+	EXTRA_CFLAGS += -I$(src)/../../../../../include/
 
 else
 	BUILDSYSTEM_DIR:=/lib/modules/$(shell uname -r)/build

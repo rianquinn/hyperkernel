@@ -1,6 +1,6 @@
 /*
- * Bareflank Hyperkernel
- * Copyright (C) 2018 Assured Information Security, Inc.
+ * Bareflank Hypervisor
+ * Copyright (C) 2015 Assured Information Security, Inc.
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -18,63 +18,24 @@
  */
 
 #include <linux/fs.h>
-#include <linux/gfp.h>
-#include <linux/list.h>
-#include <linux/miscdevice.h>
-#include <linux/mman.h>
 #include <linux/module.h>
-#include <linux/mutex.h>
-#include <linux/slab.h>
-#include <linux/string.h>
 #include <linux/uaccess.h>
+#include <linux/miscdevice.h>
 
-#include <bfdriverinterface.h>
+#include <common.h>
+#include <builderinterface.h>
+
+#include <bfdebug.h>
+#include <bftypes.h>
+#include <bfconstants.h>
+#include <bfplatform.h>
 
 /* -------------------------------------------------------------------------- */
 /* Global                                                                     */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Flags for mapping memory suitable for hypervisor use:
- *
- * MAP_LOCKED - lock the page in RAM
- * MAP_PRIVATE - keep changes private
- * MAP_ANONYMOUS - don't use a file
- * MAP_POPULATE - populate (i.e. pre-fault) associated page table entries
- *
- * Note:
- *
- * There are other attributes we should consider using, either from the
- * driver or in userspace. Specifically madvise(2) allows us to control
- * what happens to memory at certain times e.g., does a child inherit the
- * mapping on fork()? Should memory contents be included in core dumps?
- *
- * On the other hand, if the hypervisor remaps the pages from the kernel,
- * madvise may not be needed.
- */
-
-#define MMAP_FLAGS (MAP_LOCKED | MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE)
-
-
-struct hkd_mmap_node {
-    struct list_head list;
-    struct hkd_mmap mm;
-};
-
-/**
- * struct hkd
- *
- * @list the list of mmap nodes
- * @lock the lock protecting updates to @list
- * @fops the address to the file_operations
- * @misc the address to the miscdevice
- */
-struct hkd {
-    struct list_head list;
-    struct mutex lock;
-    struct file_operations *fops;
-    struct miscdevice *misc;
-} g_hkd;
+static uint64_t g_elf_size = 0;
+static uint64_t g_ram_size = 0;
 
 /* -------------------------------------------------------------------------- */
 /* Misc Device                                                                */
@@ -86,7 +47,7 @@ dev_open(struct inode *inode, struct file *file)
     (void) inode;
     (void) file;
 
-    BFDEBUG("hkd: dev_open succeeded\n");
+    BFDEBUG("dev_open succeeded\n");
     return 0;
 }
 
@@ -96,131 +57,119 @@ dev_release(struct inode *inode, struct file *file)
     (void) inode;
     (void) file;
 
-    BFDEBUG("hkd: dev_release succeeded\n");
+    BFDEBUG("dev_release succeeded\n");
     return 0;
 }
 
 static long
-ioctl_mmap(struct hkd_mmap *user_mm)
+ioctl_load_elf(const char *file)
 {
-    int32_t err;
-    uint64_t addr;
-    struct hkd_mmap mm;
-    struct hkd_mmap_node *node;
+    char *buf;
+    int64_t ret;
 
-    if (!user_mm) {
-        BFALERT("hkd: IOCTL_MMAP: failed with user_mm == NULL\n");
+    buf = platform_alloc_rw(g_elf_size);
+    if (buf == NULL) {
+        BFALERT("IOCTL_ADD_MODULE: failed to allocate memory for the module\n");
         return BF_IOCTL_FAILURE;
     }
 
-    err = copy_from_user(&mm, user_mm, sizeof(struct hkd_mmap));
-    if (err != 0) {
-        BFALERT("hkd: IOCTL_MMAP: failed to copy memory from userspace\n");
-        return BF_IOCTL_FAILURE;
+    ret = copy_from_user(buf, file, g_elf_size);
+    if (ret != 0) {
+        BFALERT("IOCTL_ADD_MODULE: failed to copy memory from userspace\n");
+        goto failed;
     }
 
-    if (!mm.size) {
-        BFALERT("hkd: IOCTL_MMAP: size must be > 0\n");
-        return BF_IOCTL_FAILURE;
+/**
+    ret = common_add_module(buf, g_elf_size);
+    if (ret != BF_SUCCESS) {
+        BFALERT("IOCTL_ADD_MODULE: common_add_module failed: %p - %s\n", \
+                (void *)ret, ec_to_str(ret));
+        goto failed;
     }
+*/
 
-    addr = vm_mmap(NULL, 0, mm.size, mm.prot, mm.flags | MMAP_FLAGS, 0);
-    if (!addr) {
-        BFALERT("hkd: IOCTL_MMAP: vm_mmap failed\n");
-        return BF_IOCTL_FAILURE;
-    }
-
-    mm.addr = (void *)addr;
-    node = kmalloc(sizeof(*node), GFP_KERNEL);
-    if (!node) {
-        BFALERT("hkd: IOCTL_MMAP: kmalloc failed\n");
-        goto out_unmap;
-    }
-
-    err = put_user((void *)addr, &user_mm->addr);
-    if (err) {
-        BFALERT("hkd: IOCTL_MMAP: put_user faulted\n");
-        goto out_node;
-    }
-
-    memcpy(&node->mm, &mm, sizeof(struct hkd_mmap));
-
-    node->list.next = &node->list;
-    node->list.prev = &node->list;
-
-    mutex_lock(&g_hkd.lock);
-    list_add(&node->list, &g_hkd.list);
-    mutex_unlock(&g_hkd.lock);
-
+    BFDEBUG("IOCTL_ADD_MODULE: succeeded\n");
     return BF_IOCTL_SUCCESS;
 
-out_node:
-    kfree(node);
+failed:
 
-out_unmap:
-    vm_munmap(addr, mm.size);
+    platform_free_rw(buf, g_elf_size);
+
+    BFALERT("IOCTL_ADD_MODULE: failed\n");
     return BF_IOCTL_FAILURE;
 }
 
 static long
-ioctl_munmap(struct hkd_mmap *user_mm)
+ioctl_load_elf_size(uint64_t *len)
 {
-    int err;
-    struct hkd_mmap mm;
-    struct hkd_mmap_node *node = NULL, *tmp;
+    int64_t ret;
 
-    if (!user_mm) {
-        BFALERT("hkd: IOCTL_MUNMAP: failed with user_mm == NULL\n");
+    if (len == 0) {
+        BFALERT("IOCTL_LOAD_ELF_SIZE: failed with len == NULL\n");
         return BF_IOCTL_FAILURE;
     }
 
-    err = copy_from_user(&mm, user_mm, sizeof(struct hkd_mmap));
-    if (err != 0) {
-        BFALERT("hkd: IOCTL_MUNMAP: failed to copy memory from userspace\n");
+    ret = copy_from_user(&g_elf_size, len, sizeof(uint64_t));
+    if (ret != 0) {
+        BFALERT("IOCTL_LOAD_ELF_SIZE: failed to copy memory from userspace\n");
         return BF_IOCTL_FAILURE;
     }
 
-    mutex_lock(&g_hkd.lock);
-    list_for_each_entry_safe(node, tmp, &g_hkd.list, list) {
-        if (node->mm.addr == mm.addr) {
-            list_del(&node->list);
-            vm_munmap((uint64_t)node->mm.addr, node->mm.size);
-            kfree(node);
-
-            break;
-        }
-    }
-    mutex_unlock(&g_hkd.lock);
-
+    BFDEBUG("IOCTL_LOAD_ELF_SIZE: succeeded\n");
     return BF_IOCTL_SUCCESS;
 }
 
 static long
-dev_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+ioctl_load_ram_size(uint64_t *len)
+{
+    int64_t ret;
+
+    if (len == 0) {
+        BFALERT("IOCTL_LOAD_RAM_SIZE: failed with len == NULL\n");
+        return BF_IOCTL_FAILURE;
+    }
+
+    ret = copy_from_user(&g_ram_size, len, sizeof(uint64_t));
+    if (ret != 0) {
+        BFALERT("IOCTL_LOAD_RAM_SIZE: failed to copy memory from userspace\n");
+        return BF_IOCTL_FAILURE;
+    }
+
+    BFDEBUG("IOCTL_LOAD_RAM_SIZE: succeeded\n");
+    return BF_IOCTL_SUCCESS;
+}
+
+static long
+dev_unlocked_ioctl(
+    struct file *file, unsigned int cmd, unsigned long arg)
 {
     (void) file;
 
     switch (cmd) {
-        case IOCTL_MMAP:
-            return ioctl_mmap((struct hkd_mmap *)arg);
-        case IOCTL_MUNMAP:
-            return ioctl_munmap((struct hkd_mmap *)arg);
+        case IOCTL_LOAD_ELF:
+            return ioctl_load_elf((char *)arg);
+
+        case IOCTL_LOAD_ELF_SIZE:
+            return ioctl_load_elf_size((uint64_t *)arg);
+
+        case IOCTL_LOAD_RAM_SIZE:
+            return ioctl_load_ram_size((uint64_t *)arg);
 
         default:
-            return BF_IOCTL_FAILURE;
+            return -EINVAL;
     }
 }
 
-static struct file_operations hkd_fops = {
+static struct file_operations fops = {
     .open = dev_open,
     .release = dev_release,
-    .unlocked_ioctl = dev_unlocked_ioctl
+    .unlocked_ioctl = dev_unlocked_ioctl,
 };
 
-static struct miscdevice hkd_misc = {
+static struct miscdevice builder_dev = {
     MISC_DYNAMIC_MINOR,
-    "hkd",
-    &hkd_fops
+    BUILDER_NAME,
+    &fops
 };
 
 /* -------------------------------------------------------------------------- */
@@ -230,35 +179,21 @@ static struct miscdevice hkd_misc = {
 int
 dev_init(void)
 {
-    INIT_LIST_HEAD(&g_hkd.list);
-    mutex_init(&g_hkd.lock);
-
-    g_hkd.misc = &hkd_misc;
-    g_hkd.fops = &hkd_fops;
-
-    if (misc_register(g_hkd.misc) != 0) {
-        BFALERT("hkd: misc_register failed\n");
+    if (misc_register(&builder_dev) != 0) {
+        BFALERT("misc_register failed\n");
         return -EPERM;
     }
 
-    BFDEBUG("hkd: dev_init succeeded\n");
+    BFDEBUG("dev_init succeeded\n");
     return 0;
 }
 
 void
 dev_exit(void)
 {
-    struct hkd_mmap_node *node, *tmp;
+    misc_deregister(&builder_dev);
 
-    list_for_each_entry_safe(node, tmp, &g_hkd.list, list) {
-        list_del(&node->list);
-        vm_munmap((unsigned long)node->mm.addr, node->mm.size);
-        kfree(node);
-    }
-
-    misc_deregister(g_hkd.misc);
-    BFDEBUG("hkd: dev_exit succeeded\n");
-
+    BFDEBUG("dev_exit succeeded\n");
     return;
 }
 

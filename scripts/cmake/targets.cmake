@@ -27,7 +27,7 @@ endif()
 add_custom_target_category("Hyperkernel Driver")
 
 add_custom_target(hkd_build
-    COMMAND ${HK_UTIL_DIR}/driver_build.sh ${HKD_SRC_DIR}
+    COMMAND ${HK_UTIL_DIR}/driver_build.sh ${HKD_SRC_DIR} ${SOURCE_ROOT_DIR}
     USES_TERMINAL
 )
 add_custom_target_info(
@@ -36,7 +36,7 @@ add_custom_target_info(
 )
 
 add_custom_target(hkd_clean
-    COMMAND ${HK_UTIL_DIR}/driver_clean.sh ${HKD_SRC_DIR}
+    COMMAND ${HK_UTIL_DIR}/driver_clean.sh ${HKD_SRC_DIR} ${SOURCE_ROOT_DIR}
     USES_TERMINAL
 )
 add_custom_target_info(
@@ -45,7 +45,7 @@ add_custom_target_info(
 )
 
 add_custom_target(hkd_load
-    COMMAND ${HK_UTIL_DIR}/driver_load.sh ${HKD_SRC_DIR}
+    COMMAND ${HK_UTIL_DIR}/driver_load.sh ${HKD_SRC_DIR}  ${SOURCE_ROOT_DIR}
     USES_TERMINAL
 )
 add_custom_target_info(
@@ -54,7 +54,7 @@ add_custom_target_info(
 )
 
 add_custom_target(hkd_unload
-    COMMAND ${HK_UTIL_DIR}/driver_unload.sh ${HKD_SRC_DIR}
+    COMMAND ${HK_UTIL_DIR}/driver_unload.sh ${HKD_SRC_DIR} ${SOURCE_ROOT_DIR}
     USES_TERMINAL
 )
 add_custom_target_info(

@@ -18,7 +18,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 # $1 == CMAKE_SOURCE_DIR
-# $2 == CMAKE_INSTALL_PREFIX
+# $2 == SOURCE_ROOT_DIR
 
 msbuild_2015="/cygdrive/c/Program Files (x86)/MSBuild/14.0/Bin/MSBuild.exe"
 msbuild_2017="/cygdrive/c/Program Files (x86)/Microsoft Visual Studio/2017/Community/MSBuild/15.0/bin/msbuild.exe"
@@ -56,8 +56,8 @@ CYGWIN_NT-10.0*)
     >&2 eval "'$msbuild' /m:3 /p:Configuration=Release /p:Platform=x64 /p:TargetVersion=Windows10 bareflank.sln"
     ;;
 Linux)
-    cd $1/src/platform/linux
-    make
+    cd $1/builder/src/platform/linux
+    make SOURCE_ROOT_DIR=$2
     ;;
 *)
     >&2 echo "OS not supported"
