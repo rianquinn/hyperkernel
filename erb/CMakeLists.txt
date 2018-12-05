@@ -83,6 +83,30 @@ ExternalProject_Add_Step(${BR_TARGET} reconfig-buildroot
     COMMENT "Re-configuring buildroot"
 )
 
+# ------------------------------------------------------------------------------
+# Menuconfig targets
+# ------------------------------------------------------------------------------
+if(ERB_LINUX_OVERRIDE)
+    set(SUFFIX "custom")
+else()
+    set(SUFFIX "hk")
+endif()
+set(LINUX_BIN_DIR ${BR_BIN_DIR}/build/linux-${SUFFIX})
+
+add_custom_target(lmc
+    COMMAND ${HK_UTIL_DIR}/menuconfig.sh ${LINUX_BIN_DIR} ${BR_CONFIG_LINUX_IN}
+)
+add_custom_target(bmc
+    COMMAND ${HK_UTIL_DIR}/menuconfig.sh ${BR_BIN_DIR} ${BR_CONFIG_IN}
+)
+
+add_custom_target_info(TARGET lmc COMMENT "Run linux\\'s menuconfig")
+add_custom_target_info(TARGET bmc COMMENT "Run buildroot\\'s menuconfig")
+
+# ------------------------------------------------------------------------------
+# Install
+# ------------------------------------------------------------------------------
+
 install(
     FILES ${BR_BIN_DIR}/images/vmlinux
     DESTINATION ${USERSPACE_PREFIX_PATH}/bin

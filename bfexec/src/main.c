@@ -36,9 +36,6 @@
 #include "xen/start_info.h"
 #include "xen/elf_note.h"
 
-extern int is_xen_elf_note(const char *buf);
-extern void print_xen_elf_note(const struct xen_elf_note *note);
-
 // Notes:
 //
 // - Currently on one vCPU is supported. This code is written using threading
