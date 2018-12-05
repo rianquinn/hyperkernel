@@ -229,24 +229,6 @@ public:
     ///
     VIRTUAL void kill();
 
-    /// Sleep
-    ///
-    /// Tells the vCPU to enter the sleep state
-    ///
-    /// @expects
-    /// @ensures
-    ///
-    VIRTUAL void sleep();
-
-    /// Wake
-    ///
-    /// Tells the vCPU to enter the wake state
-    ///
-    /// @expects
-    /// @ensures
-    ///
-    VIRTUAL void wake(bfobject *obj);
-
     /// Is Alive
     ///
     /// @expects
@@ -264,24 +246,6 @@ public:
     /// @return returns true if the vCPU has been killed, false otherwise
     ///
     VIRTUAL bool is_killed() const;
-
-    /// Is Asleep
-    ///
-    /// @expects
-    /// @ensures
-    ///
-    /// @return returns true iff the vCPU is in the sleep state
-    ///
-    VIRTUAL bool is_asleep() const;
-
-    /// Is Awake
-    ///
-    /// @expects
-    /// @ensures
-    ///
-    /// @return returns true only iff the vCPU is in the wake state
-    ///
-    VIRTUAL bool is_awake() const;
 
     //--------------------------------------------------------------------------
     // LAPIC
