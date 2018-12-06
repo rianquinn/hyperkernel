@@ -30,6 +30,9 @@
 #include <bfconstants.h>
 #include <bfplatform.h>
 
+#define MAX_VMS 0x1000
+struct vm_t g_vms[MAX_VMS] = {0};
+
 /* -------------------------------------------------------------------------- */
 /* Misc Device                                                                */
 /* -------------------------------------------------------------------------- */
@@ -51,9 +54,23 @@ dev_release(struct inode *inode, struct file *file)
 static long
 ioctl_create_from_elf(const struct create_from_elf_args *args)
 {
+    int64_t i;
     int64_t ret;
+    struct vm_t *vm;
     struct create_from_elf_args user_ioctl_args;
     struct create_from_elf_args kern_ioctl_args;
+
+    for (i = 0; i < MAX_VMS; i++) {
+        vm = &g_vms[i];
+        if (vm->used == 0) {
+            break;
+        }
+    }
+
+    if (i == MAX_VMS) {
+        BFALERT("MAX_VMS reached. No more VMs can be created\n");
+        return BF_IOCTL_FAILURE;
+    }
 
     ret = copy_from_user(
         &user_ioctl_args, args, sizeof(struct create_from_elf_args));
@@ -95,7 +112,7 @@ ioctl_create_from_elf(const struct create_from_elf_args *args)
         goto failed;
     }
 
-    ret = common_create_from_elf(&kern_ioctl_args);
+    ret = common_create_from_elf(vm, &kern_ioctl_args);
     if (ret != BF_SUCCESS) {
         BFDEBUG("common_create_from_elf failed: %llx\n", ret);
         goto failed;
@@ -119,7 +136,9 @@ failed:
 static long
 ioctl_destroy(const domainid_t *args)
 {
+    int64_t i;
     int64_t ret;
+    struct vm_t *vm;
     domainid_t domainid;
 
     ret = copy_from_user(&domainid, args, sizeof(domainid_t));
@@ -128,7 +147,19 @@ ioctl_destroy(const domainid_t *args)
         return BF_IOCTL_FAILURE;
     }
 
-    ret = common_destroy(domainid);
+    for (i = 0; i < MAX_VMS; i++) {
+        vm = &g_vms[i];
+        if (vm->used == 1 && vm->domainid == domainid) {
+            break;
+        }
+    }
+
+    if (i == MAX_VMS) {
+        BFALERT("MAX_VMS reached. Unable to locate VM\n");
+        return BF_IOCTL_FAILURE;
+    }
+
+    ret = common_destroy(vm);
     if (ret != BF_SUCCESS) {
         BFDEBUG("common_destroy failed: %llx\n", ret);
         return BF_IOCTL_FAILURE;

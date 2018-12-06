@@ -16,6 +16,8 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
+#include <bfgpalayout.h>
+
 #include <iostream>
 #include <hve/arch/intel_x64/vcpu.h>
 #include <hve/arch/intel_x64/lapic.h>
@@ -32,10 +34,6 @@
 
 #include <hve/arch/intel_x64/xen/xen_op.h>
 #include <hve/arch/intel_x64/xen/evtchn_op.h>
-#include "../../../../../../include/gpa_layout.h"
-
-// wrmsr_safe(0xC0000600, dec, 0);
-// wrmsr_safe(0xC0000700, hex, 0);
 
 // =============================================================================
 // Definitions

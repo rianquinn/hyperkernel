@@ -80,15 +80,17 @@ create_elf_vm(const args_type &args)
     ioctl_args.uart = uart;
     ioctl_args.size = size;
 
-    std::cout << bfcolor_magenta "------------------------------------------------------------\n" bfcolor_end;
-    std::cout << bfcolor_blue "Creating VM from ELF file\n" bfcolor_end;
-    std::cout << bfcolor_magenta "------------------------------------------------------------\n" bfcolor_end;
-    std::cout << "path: " << bfcolor_green << file.path() << bfcolor_end "\n";
-    std::cout << "size: " << bfcolor_green << size << bfcolor_end "\n";
-    std::cout << "cmdl: " << bfcolor_green << cmdl.data() << bfcolor_end "\n";
+    if (verbose) {
+        std::cout << bfcolor_magenta "-------------------------\n" bfcolor_end;
+        std::cout << bfcolor_blue    "Creating VM from ELF file\n" bfcolor_end;
+        std::cout << bfcolor_magenta "-------------------------\n" bfcolor_end;
+        std::cout << "path: " << bfcolor_green << file.path() << bfcolor_end "\n";
+        std::cout << "size: " << bfcolor_green << size << bfcolor_end "\n";
+        std::cout << "cmdl: " << bfcolor_green << cmdl.data() << bfcolor_end "\n";
+    }
 
     ctl->call_ioctl_create_from_elf(ioctl_args);
-    ctl->call_ioctl_destroy(ioctl_args);
+    ctl->call_ioctl_destroy(ioctl_args.domainid);
 
     return EXIT_SUCCESS;
 }

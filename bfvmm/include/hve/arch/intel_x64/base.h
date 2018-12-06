@@ -20,12 +20,12 @@
 #define BASE_INTEL_X64_HYPERKERNEL_H
 
 #include <bfdebug.h>
+#include <bfhypercall.h>
 
 #include <bfvmm/vcpu/vcpu_manager.h>
 #include <bfvmm/hve/arch/intel_x64/vcpu.h>
 
 #include "../../../domain/domain_manager.h"
-#include "../../../../../include/hypercall.h"
 
 #ifndef PAGE_SIZE
 #define PAGE_SIZE 4096

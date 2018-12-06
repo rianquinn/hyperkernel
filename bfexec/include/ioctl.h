@@ -86,7 +86,18 @@ public:
     ///
     /// @param args the args needed to create the VM
     ///
-    void call_ioctl_create_from_elf(const create_from_elf_args &args);
+    void call_ioctl_create_from_elf(create_from_elf_args &args);
+
+    /// Destroy VM
+    ///
+    /// Destroys a VM given a domain ID
+    ///
+    /// @expects none
+    /// @ensures none
+    ///
+    /// @param domainid the domain to destroy
+    ///
+    void call_ioctl_destroy(domainid_t domainid);
 
 private:
 

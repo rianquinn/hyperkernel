@@ -35,8 +35,8 @@
 extern "C" {
 #endif
 
-uint32_t _cpuid_eax(uint32_t val);
-uint64_t _vmcall(uint64_t r1, uint64_t r2, uint64_t r3, uint64_t r4);
+uint32_t _cpuid_eax(uint32_t val) NOEXCEPT;
+uint64_t _vmcall(uint64_t r1, uint64_t r2, uint64_t r3, uint64_t r4) NOEXCEPT;
 
 #ifdef __cplusplus
 }

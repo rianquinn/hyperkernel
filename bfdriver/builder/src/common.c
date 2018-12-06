@@ -22,24 +22,6 @@
 
 #include <common.h>
 
-/* -------------------------------------------------------------------------- */
-/* VM State Info                                                              */
-/* -------------------------------------------------------------------------- */
-
-struct vm_t {
-    struct crt_info_t crt_info;
-    struct bfelf_loader_t bfelf_loader;
-    struct bfelf_binary_t bfelf_binary;
-
-    void *entry;
-    uint64_t domainid;
-
-    int used;
-};
-
-#define MAX_VMS 0x1000
-struct vm_t g_vms[MAX_VMS] = {0};
-
 // /* -------------------------------------------------------------------------- */
 // /* Global                                                                     */
 // /* -------------------------------------------------------------------------- */
@@ -496,25 +478,13 @@ struct vm_t g_vms[MAX_VMS] = {0};
 /* -------------------------------------------------------------------------- */
 
 int64_t
-common_create_from_elf(const struct create_from_elf_args *args)
+common_create_from_elf(
+    struct vm_t *vm, struct create_from_elf_args *args)
 {
-    int i;
-    struct vm_t *vm;
+    args->domainid = INVALID_DOMAINID;
 
     if (_cpuid_eax(0xBF00) != 0xBF01) {
         return HYPERVISOR_NOT_LOADED;
-    }
-
-    for (i = 0; i < MAX_VMS; i++) {
-        vm = &g_vms[i];
-        if (vm->used == 0) {
-            break;
-        }
-    }
-
-    if (i == MAX_VMS) {
-        BFALERT("MAX_VMS reached. No more VMs can be created\n");
-        return CREATE_FROM_ELF_FAILED;
     }
 
     platform_memset(vm, 0, sizeof(struct vm_t));
@@ -529,28 +499,17 @@ common_create_from_elf(const struct create_from_elf_args *args)
     // g_vm.bfelf_binary.file_size = size;
 
     vm->used = 1;
+    args->domainid = vm->domainid;
+
     return BF_SUCCESS;
 }
 
 int64_t
-common_destroy(domainid_t domainid)
+common_destroy(struct vm_t *vm)
 {
-    int i;
     status_t ret;
 
-    for (i = 0; i < MAX_VMS; i++) {
-        vm = &g_vms[i];
-        if (vm->used == 1 && vm->domainid == domainid) {
-            break;
-        }
-    }
-
-    if (i == MAX_VMS) {
-        BFALERT("MAX_VMS reached. Unable to locate VM\n");
-        return CREATE_FROM_ELF_FAILED;
-    }
-
-    ret = __domain_op__destroy_domain(domainid);
+    ret = __domain_op__destroy_domain(vm->domainid);
     if (ret != SUCCESS) {
         BFALERT("__domain_op__destroy_domain failed\n");
         return FAILURE;

@@ -61,10 +61,13 @@ extern "C" {
  *     the command line arguments to pass to the Linux kernel on boot
  * @var create_from_elf_args::cmdl_length
  *     the length of the command line arguments
- * @var create_from_elf_args::domainid
- *     the domain ID of the VM to create and load
+ * @var create_from_elf_args::uart
+ *     defaults to 0. If non zero, the hypervisor will be told to pass-through
+ *     the provided uart.
  * @var create_from_elf_args::ram_size
  *     the amount of RAM to give to the domain
+ * @var create_from_elf_args::domainid
+ *     (out) the domain ID of the VM that was created
  */
 struct create_from_elf_args {
     const char *file;
@@ -75,6 +78,8 @@ struct create_from_elf_args {
 
     uint64_t uart;
     uint64_t size;
+
+    uint64_t domainid;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -83,7 +88,7 @@ struct create_from_elf_args {
 
 #ifdef __linux__
 
-#define IOCTL_CREATE_FROM_ELF _IOW(BUILDER_MAJOR, IOCTL_CREATE_FROM_ELF_CMD, struct create_from_elf_args *)
+#define IOCTL_CREATE_FROM_ELF _IOWR(BUILDER_MAJOR, IOCTL_CREATE_FROM_ELF_CMD, struct create_from_elf_args *)
 #define IOCTL_DESTROY _IOW(BUILDER_MAJOR, IOCTL_DESTROY_CMD, domainid_t *)
 
 #endif
@@ -110,7 +115,7 @@ DEFINE_GUID(
     0xcb,
     0x44);
 
-#define IOCTL_CREATE_FROM_ELF CTL_CODE(BUILDER_DEVICETYPE, IOCTL_CREATE_FROM_ELF_CMD, METHOD_IN_DIRECT, FILE_WRITE_DATA)
+#define IOCTL_CREATE_FROM_ELF CTL_CODE(BUILDER_DEVICETYPE, IOCTL_CREATE_FROM_ELF_CMD, METHOD_IN_DIRECT, FILE_READ_DATA | FILE_WRITE_DATA)
 #define IOCTL_DESTROY CTL_CODE(BUILDER_DEVICETYPE, IOCTL_DESTROY_CMD, METHOD_IN_DIRECT, FILE_WRITE_DATA)
 
 #endif

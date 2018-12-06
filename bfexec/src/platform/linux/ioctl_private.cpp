@@ -63,9 +63,17 @@ ioctl_private::~ioctl_private()
 { close(fd); }
 
 void
-ioctl_private::call_ioctl_create_from_elf(const create_from_elf_args &args)
+ioctl_private::call_ioctl_create_from_elf(create_from_elf_args &args)
 {
     if (bfm_write_ioctl(fd, IOCTL_CREATE_FROM_ELF_CMD, &args) < 0) {
         throw std::runtime_error("ioctl failed: IOCTL_CREATE_FROM_ELF_CMD");
+    }
+}
+
+void
+ioctl_private::call_ioctl_destroy(domainid_t domainid)
+{
+    if (bfm_write_ioctl(fd, IOCTL_DESTROY_CMD, &domainid) < 0) {
+        throw std::runtime_error("ioctl failed: IOCTL_DESTROY_CMD");
     }
 }

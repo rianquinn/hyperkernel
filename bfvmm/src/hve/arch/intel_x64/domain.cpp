@@ -17,9 +17,9 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 #include <bfdebug.h>
-#include <hve/arch/intel_x64/domain.h>
+#include <bfgpalayout.h>
 
-#include "../../../../../include/gpa_layout.h"
+#include <hve/arch/intel_x64/domain.h>
 
 using namespace eapis::intel_x64;
 

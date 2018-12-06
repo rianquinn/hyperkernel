@@ -33,24 +33,47 @@ extern "C" {
 #define CREATE_FROM_ELF_FAILED bfscast(status_t, 0x8000000000000002)
 #define DESTROY_FAILED bfscast(status_t, 0x8000000000000002)
 
+struct vm_t {
+    struct crt_info_t crt_info;
+    struct bfelf_loader_t bfelf_loader;
+    struct bfelf_binary_t bfelf_binary;
+
+    void *entry;
+    uint64_t domainid;
+
+    int used;
+};
+
 /**
- * Build ELF
+ * Create VM from ELF
  *
  * The following function builds a guest VM based on a provided ELF file.
  * To accomplish this, the following function will allocate RAM, load RAM
  * with the contents of the provided ELF file, and then set up the guest's
  * memory map.
  *
- * @param file the file to add to memory
- * @param fsize the size of the file in bytes
- * @param rsize the size of RAM in bytes
+ * Note that this function takes a VM object. This object will be cleared
+ * by this function so it should point to a VM object that is currently
+ * not being used by another VM (i.e. unsused).
+ *
+ * @param vm the vm_t object associated with the vm
+ * @param args the create_from_elf_args arguments needed to create the VM
  * @return BF_SUCCESS on success, negative error code on failure
  */
 int64_t
-common_create_from_elf(const struct create_from_elf_args *args);
+common_create_from_elf(struct vm_t *vm, struct create_from_elf_args *args);
 
+/**
+ * Destroy VM
+ *
+ * This function will destory a VM by telling the hypervisor to remove all
+ * internal resources associated with the VM.
+ *
+ * @param vm the vm_t object associated with the vm
+ * @return BF_SUCCESS on success, negative error code on failure
+ */
 int64_t
-common_destroy(domainid_t domainid);
+common_destroy(struct vm_t *vm);
 
 #ifdef __cplusplus
 }
