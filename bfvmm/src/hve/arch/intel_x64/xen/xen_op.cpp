@@ -620,6 +620,7 @@ xen_op_handler::ioapic_handle_write(
         case win_offset:
             m_vcpu->ioapic_write(val);
             m_vcpu->ioapic_set_window(val);
+
         default:
             throw std::invalid_argument("Invalid IOAPIC write: " +
                                         std::to_string(info.gpa));
