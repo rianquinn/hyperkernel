@@ -19,6 +19,7 @@
 #include <intrinsics.h>
 
 #include <hve/arch/intel_x64/lapic.h>
+#include <hve/arch/intel_x64/ioapic.h>
 #include <hve/arch/intel_x64/vcpu.h>
 #include <hve/arch/intel_x64/fault.h>
 #include <hve/arch/intel_x64/vtd/vtd_sandbox.h>
@@ -94,6 +95,7 @@ vcpu::vcpu(
 
     m_domain{domain},
     m_lapic{this},
+    m_ioapic{this},
 
     m_external_interrupt_handler{this},
     m_fault_handler{this},
@@ -205,6 +207,7 @@ vcpu::write_domU_guest_state(domain *domain)
     vmcs_link_pointer::set(0xFFFFFFFFFFFFFFFF);
 
     m_lapic.init();
+    m_ioapic.init();
 
     using namespace primary_processor_based_vm_execution_controls;
     hlt_exiting::enable();
@@ -339,7 +342,7 @@ vcpu::queue_timer_interrupt()
 { this->queue_external_interrupt(m_timer_vector); }
 
 //------------------------------------------------------------------------------
-// LAPIC
+// APIC
 //------------------------------------------------------------------------------
 
 uint32_t
@@ -357,6 +360,26 @@ vcpu::lapic_read(uint32_t indx) const
 void
 vcpu::lapic_write(uint32_t indx, uint32_t val)
 { m_lapic.write(indx, val); }
+
+uint32_t
+vcpu::ioapic_read() const
+{ return m_ioapic.read(); }
+
+void
+vcpu::ioapic_write(uint32_t val)
+{ m_ioapic.write(val); }
+
+uint64_t
+vcpu::ioapic_base() const
+{ return m_ioapic.base(); }
+
+void
+vcpu::ioapic_select(uint32_t offset)
+{ return m_ioapic.select(offset); }
+
+void
+vcpu::ioapic_set_window(uint32_t val)
+{ m_ioapic.set_window(val); }
 
 //------------------------------------------------------------------------------
 // Resources

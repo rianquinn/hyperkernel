@@ -96,24 +96,24 @@ typedef struct {
 // MADT - Multiple APIC Description Table v3
 // -----------------------------------------------------------------------------
 
-enum madt_type_t {
-    ACPI_MADT_TYPE_LOCAL_APIC               = 0,
-    ACPI_MADT_TYPE_IO_APIC                  = 1,
-    ACPI_MADT_TYPE_INTERRUPT_OVERRIDE       = 2,
-    ACPI_MADT_TYPE_NMI_SOURCE               = 3,
-    ACPI_MADT_TYPE_LOCAL_APIC_NMI           = 4,
-    ACPI_MADT_TYPE_LOCAL_APIC_OVERRIDE      = 5,
-    ACPI_MADT_TYPE_IO_SAPIC                 = 6,
-    ACPI_MADT_TYPE_LOCAL_SAPIC              = 7,
-    ACPI_MADT_TYPE_INTERRUPT_SOURCE         = 8,
-    ACPI_MADT_TYPE_LOCAL_X2APIC             = 9,
-    ACPI_MADT_TYPE_LOCAL_X2APIC_NMI         = 10,
-    ACPI_MADT_TYPE_GENERIC_INTERRUPT        = 11,
-    ACPI_MADT_TYPE_GENERIC_DISTRIBUTOR      = 12,
-    ACPI_MADT_TYPE_GENERIC_MSI_FRAME        = 13,
-    ACPI_MADT_TYPE_GENERIC_REDISTRIBUTOR    = 14,
-    ACPI_MADT_TYPE_GENERIC_TRANSLATOR       = 15,
-    ACPI_MADT_TYPE_RESERVED                 = 16
+enum ics_type_t {
+    ICS_TYPE_LOCAL_APIC               = 0,
+    ICS_TYPE_IO_APIC                  = 1,
+    ICS_TYPE_INTERRUPT_OVERRIDE       = 2,
+    ICS_TYPE_NMI_SOURCE               = 3,
+    ICS_TYPE_LOCAL_APIC_NMI           = 4,
+    ICS_TYPE_LOCAL_APIC_OVERRIDE      = 5,
+    ICS_TYPE_IO_SAPIC                 = 6,
+    ICS_TYPE_LOCAL_SAPIC              = 7,
+    ICS_TYPE_INTERRUPT_SOURCE         = 8,
+    ICS_TYPE_LOCAL_X2APIC             = 9,
+    ICS_TYPE_LOCAL_X2APIC_NMI         = 10,
+    ICS_TYPE_GENERIC_INTERRUPT        = 11,
+    ICS_TYPE_GENERIC_DISTRIBUTOR      = 12,
+    ICS_TYPE_GENERIC_MSI_FRAME        = 13,
+    ICS_TYPE_GENERIC_REDISTRIBUTOR    = 14,
+    ICS_TYPE_GENERIC_TRANSLATOR       = 15,
+    ICS_TYPE_RESERVED                 = 16
 };
 
 typedef struct {
@@ -121,17 +121,26 @@ typedef struct {
     uint8_t                 processorid;
     uint8_t                 id;
     uint32_t                flags;
-} __attribute__((packed)) acpi_madt_local_apic_t;
+} __attribute__((packed)) ics_lapic_t;
+
+typedef struct {
+    acpi_subtable_header_t  header;
+    uint8_t                 id;
+    uint8_t                 reserved;
+    uint32_t                address;
+    uint32_t                gsi_base;
+} __attribute__((packed)) ics_ioapic_t;
 
 typedef struct {
     acpi_header_t           header;                 ///< Common ACPI table header
     uint32_t                address;                ///< Physical address of local APIC
     uint32_t                flags;                  ///< MADT flags (0 == No PIC)
-    acpi_madt_local_apic_t  lapic;                  ///< Local APIC settings
+    ics_lapic_t             lapic;                  ///< Local APIC ICS
+    ics_ioapic_t            ioapic;                 ///< IOAPIC ICS
 } __attribute__((packed)) madt_t;
 
 // -----------------------------------------------------------------------------
-// MADT - Multiple APIC Description Table v6
+// FADT
 // -----------------------------------------------------------------------------
 
 typedef struct {

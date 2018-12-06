@@ -33,6 +33,7 @@
 
 #include "domain.h"
 #include "lapic.h"
+#include "ioapic.h"
 
 #include <bfvmm/vcpu/vcpu_manager.h>
 #include <eapis/hve/arch/intel_x64/vcpu.h>
@@ -251,7 +252,7 @@ public:
     // LAPIC
     //--------------------------------------------------------------------------
 
-    /// APIC ID
+    /// LAPIC ID
     ///
     /// The APIC ID and the vCPU ID do not need to agree, and on some systems
     /// they don't. This provides that level of flexibility by returning the
@@ -261,7 +262,7 @@ public:
     ///
     VIRTUAL uint32_t lapicid() const;
 
-    /// APIC Base
+    /// LAPIC Base
     ///
     /// This function returns the APIC base for this APIC as a GPA. The HPA is
     /// maintained internally to this class and is not accessible.
@@ -270,19 +271,49 @@ public:
     ///
     VIRTUAL uint64_t lapic_base() const;
 
-    /// Read
+    /// LAPIC Read
     ///
     /// @param indx the dword offset to read from
     /// @return the 32-bit value of the register
     ///
     VIRTUAL uint32_t lapic_read(uint32_t indx) const;
 
-    /// Write
+    /// LAPIC Write
     ///
     /// @param indx the dword offset to write to
     /// @param val the 32-bit value to write
     ///
     VIRTUAL void lapic_write(uint32_t indx, uint32_t val);
+
+    /// IOAPIC Base
+    ///
+    /// @return IOAPIC base GPA
+    ///
+    VIRTUAL uint64_t ioapic_base() const;
+
+    /// IOAPIC Select
+    ///
+    /// @param offset the offset of the IOAPIC register to access
+    ///
+    VIRTUAL void ioapic_select(uint32_t offset);
+
+    /// IOAPIC Read
+    ///
+    /// @return the 32-bit value of the selected register
+    ///
+    VIRTUAL uint32_t ioapic_read() const;
+
+    /// IOAPIC Write
+    ///
+    /// @param val the 32-bit value to write to the selected register
+    ///
+    VIRTUAL void ioapic_write(uint32_t val);
+
+    /// IOAPIC set window
+    ///
+    /// @param val the 32-bit value to write to IOWIN
+    ///
+    VIRTUAL void ioapic_set_window(uint32_t val);
 
     /// Set timer vector
     ///
@@ -317,6 +348,7 @@ private:
 
     domain *m_domain{};
     lapic m_lapic;
+    ioapic m_ioapic;
 
     external_interrupt_handler m_external_interrupt_handler;
     fault_handler m_fault_handler;
@@ -329,7 +361,6 @@ private:
     xen_op_handler m_xen_op_handler;
 
     bool m_killed{};
-    bool m_asleep{};
 
     vcpu *m_parent_vcpu{};
     uint64_t m_timer_vector{};
