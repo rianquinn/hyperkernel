@@ -22,7 +22,7 @@
 #include <memory>
 
 #include <bfgsl.h>
-#include <builderinterface.h>
+#include <bfbuilderinterface.h>
 
 #ifdef _MSC_VER
 #pragma warning(push)
@@ -77,16 +77,16 @@ public:
     ///
     ~ioctl() = default;
 
-    /// Load ELF
+    /// Create VM from ELF
     ///
-    /// Load and ELF file as a guest VM.
-    ///
-    /// @param file the ELF file to load
+    /// Creates a virtual machine given an ELF file.
     ///
     /// @expects none
     /// @ensures none
     ///
-    void call_ioctl_load_elf(const load_elf_args &args);
+    /// @param args the args needed to create the VM
+    ///
+    void call_ioctl_create_from_elf(const create_from_elf_args &args);
 
 private:
 

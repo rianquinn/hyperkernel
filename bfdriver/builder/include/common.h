@@ -23,11 +23,15 @@
 #include <bftypes.h>
 #include <bferrorcodes.h>
 #include <bfelf_loader.h>
-#include <bfdebugringinterface.h>
+#include <bfbuilderinterface.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#define HYPERVISOR_NOT_LOADED bfscast(status_t, 0x8000000000000001)
+#define CREATE_FROM_ELF_FAILED bfscast(status_t, 0x8000000000000002)
+#define DESTROY_FAILED bfscast(status_t, 0x8000000000000002)
 
 /**
  * Build ELF
@@ -43,7 +47,10 @@ extern "C" {
  * @return BF_SUCCESS on success, negative error code on failure
  */
 int64_t
-common_build_elf(const char *file, uint64_t fsize, uint64_t rsize);
+common_create_from_elf(const struct create_from_elf_args *args);
+
+int64_t
+common_destroy(domainid_t domainid);
 
 #ifdef __cplusplus
 }

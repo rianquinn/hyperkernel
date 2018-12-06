@@ -23,18 +23,24 @@
 include(${CMAKE_CURRENT_LIST_DIR}/scripts/cmake/config/default.cmake)
 
 # ------------------------------------------------------------------------------
-# Optional components
+# Targets
 # ------------------------------------------------------------------------------
 
-# Build a bootable guest image
-#
+include(${HK_SOURCE_CMAKE_DIR}/targets.cmake)
+
+# ------------------------------------------------------------------------------
+# VMs
+# ------------------------------------------------------------------------------
+
 if(HK_BUILD_GUEST)
-    include(${HK_ERB_DIR}/CMakeLists.txt)
+    include(${HK_SOURCE_ERB_DIR}/CMakeLists.txt)
 endif()
 
 
-# Build the hyperkernel vmm
-#
+# ------------------------------------------------------------------------------
+# VMM
+# ------------------------------------------------------------------------------
+
 if(ENABLE_BUILD_VMM)
     eapis_vmm_extension(
         hyperkernel_bfvmm
@@ -56,5 +62,5 @@ userspace_extension(
     bfexec
     SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/bfexec/src
     DEPENDS bfintrinsics
-    DEPENDS args
+    DEPENDS cxxopts
 )

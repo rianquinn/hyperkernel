@@ -23,7 +23,7 @@
 #include <linux/miscdevice.h>
 
 #include <common.h>
-#include <builderinterface.h>
+#include <bfbuilderinterface.h>
 
 #include <bfdebug.h>
 #include <bftypes.h>
@@ -37,9 +37,6 @@
 static int
 dev_open(struct inode *inode, struct file *file)
 {
-    (void) inode;
-    (void) file;
-
     BFDEBUG("dev_open succeeded\n");
     return 0;
 }
@@ -47,59 +44,110 @@ dev_open(struct inode *inode, struct file *file)
 static int
 dev_release(struct inode *inode, struct file *file)
 {
-    (void) inode;
-    (void) file;
-
     BFDEBUG("dev_release succeeded\n");
     return 0;
 }
 
 static long
-ioctl_load_elf(const struct load_elf_args *args)
+ioctl_create_from_elf(const struct create_from_elf_args *args)
 {
-    // int64_t ret;
+    int64_t ret;
+    struct create_from_elf_args user_ioctl_args;
+    struct create_from_elf_args kern_ioctl_args;
 
-    // buf = platform_alloc_rw(g_elf_size);
-    // if (buf == NULL) {
-    //     BFALERT("IOCTL_ADD_MODULE: failed to allocate memory for the module\n");
-    //     return BF_IOCTL_FAILURE;
-    // }
+    ret = copy_from_user(
+        &user_ioctl_args, args, sizeof(struct create_from_elf_args));
+    if (ret != 0) {
+        BFALERT("IOCTL_CREATE_FROM_ELF: failed to copy args from userspace\n");
+        return BF_IOCTL_FAILURE;
+    }
 
-    // ret = copy_from_user(buf, file, g_elf_size);
-    // if (ret != 0) {
-    //     BFALERT("IOCTL_ADD_MODULE: failed to copy memory from userspace\n");
-    //     goto failed;
-    // }
+    ret = copy_from_user(
+        &kern_ioctl_args, args, sizeof(struct create_from_elf_args));
+    if (ret != 0) {
+        BFALERT("IOCTL_CREATE_FROM_ELF: failed to copy args from userspace\n");
+        return BF_IOCTL_FAILURE;
+    }
 
-/**
-    ret = common_add_module(buf, g_elf_size);
-    if (ret != BF_SUCCESS) {
-        BFALERT("IOCTL_ADD_MODULE: common_add_module failed: %p - %s\n", \
-                (void *)ret, ec_to_str(ret));
+    kern_ioctl_args.file = platform_alloc_rw(user_ioctl_args.file_size);
+    if (kern_ioctl_args.file == NULL) {
+        BFALERT("IOCTL_CREATE_FROM_ELF: failed to allocate memory for file\n");
         goto failed;
     }
-*/
 
-//     BFDEBUG("IOCTL_ADD_MODULE: succeeded\n");
-//     return BF_IOCTL_SUCCESS;
+    kern_ioctl_args.cmdl = platform_alloc_rw(user_ioctl_args.cmdl_size);
+    if (kern_ioctl_args.cmdl == NULL) {
+        BFALERT("IOCTL_CREATE_FROM_ELF: failed to allocate memory for file\n");
+        goto failed;
+    }
 
-// failed:
+    ret = copy_from_user(
+        (void *)kern_ioctl_args.file, user_ioctl_args.file, user_ioctl_args.file_size);
+    if (ret != 0) {
+        BFALERT("IOCTL_CREATE_FROM_ELF: failed to copy file from userspace\n");
+        goto failed;
+    }
 
-//     platform_free_rw(buf, g_elf_size);
+    ret = copy_from_user(
+        (void *)kern_ioctl_args.cmdl, user_ioctl_args.cmdl, user_ioctl_args.cmdl_size);
+    if (ret != 0) {
+        BFALERT("IOCTL_CREATE_FROM_ELF: failed to copy cmdl from userspace\n");
+        goto failed;
+    }
 
-    BFALERT("IOCTL_ADD_MODULE: failed\n");
+    ret = common_create_from_elf(&kern_ioctl_args);
+    if (ret != BF_SUCCESS) {
+        BFDEBUG("common_create_from_elf failed: %llx\n", ret);
+        goto failed;
+    }
+
+    platform_free_rw((void *)kern_ioctl_args.file, kern_ioctl_args.file_size);
+    platform_free_rw((void *)kern_ioctl_args.cmdl, kern_ioctl_args.cmdl_size);
+
+    BFDEBUG("IOCTL_CREATE_FROM_ELF: succeeded\n");
+    return BF_IOCTL_SUCCESS;
+
+failed:
+
+    platform_free_rw((void *)kern_ioctl_args.file, kern_ioctl_args.file_size);
+    platform_free_rw((void *)kern_ioctl_args.cmdl, kern_ioctl_args.cmdl_size);
+
+    BFALERT("IOCTL_CREATE_FROM_ELF: failed\n");
     return BF_IOCTL_FAILURE;
+}
+
+static long
+ioctl_destroy(const domainid_t *args)
+{
+    int64_t ret;
+    domainid_t domainid;
+
+    ret = copy_from_user(&domainid, args, sizeof(domainid_t));
+    if (ret != 0) {
+        BFALERT("IOCTL_DESTROY: failed to copy args from userspace\n");
+        return BF_IOCTL_FAILURE;
+    }
+
+    ret = common_destroy(domainid);
+    if (ret != BF_SUCCESS) {
+        BFDEBUG("common_destroy failed: %llx\n", ret);
+        return BF_IOCTL_FAILURE;
+    }
+
+    BFDEBUG("IOCTL_DESTROY: succeeded\n");
+    return BF_IOCTL_SUCCESS;
 }
 
 static long
 dev_unlocked_ioctl(
     struct file *file, unsigned int cmd, unsigned long arg)
 {
-    (void) file;
-
     switch (cmd) {
-        case IOCTL_LOAD_ELF:
-            return ioctl_load_elf((struct load_elf_args *)arg);
+        case IOCTL_CREATE_FROM_ELF_CMD:
+            return ioctl_create_from_elf((struct create_from_elf_args *)arg);
+
+        case IOCTL_DESTROY_CMD:
+            return ioctl_destroy((domainid_t *)arg);
 
         default:
             return -EINVAL;

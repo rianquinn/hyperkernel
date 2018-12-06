@@ -28,7 +28,7 @@ public:
     ioctl_private();
     ~ioctl_private() override;
 
-    void call_ioctl_load_elf(const load_elf_args &args);
+    void call_ioctl_create_from_elf(const create_from_elf_args &args);
 
 private:
 

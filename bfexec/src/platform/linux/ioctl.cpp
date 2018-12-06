@@ -24,9 +24,9 @@ ioctl::ioctl() :
 { }
 
 void
-ioctl::call_ioctl_load_elf(const load_elf_args &args)
+ioctl::call_ioctl_create_from_elf(const create_from_elf_args &args)
 {
     if (auto d = dynamic_cast<ioctl_private *>(m_d.get())) {
-        d->call_ioctl_load_elf(args);
+        d->call_ioctl_create_from_elf(args);
     }
 }

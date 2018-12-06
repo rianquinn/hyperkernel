@@ -63,9 +63,9 @@ ioctl_private::~ioctl_private()
 { close(fd); }
 
 void
-ioctl_private::call_ioctl_load_elf(const load_elf_args &args)
+ioctl_private::call_ioctl_create_from_elf(const create_from_elf_args &args)
 {
-    if (bfm_write_ioctl(fd, IOCTL_LOAD_ELF_CMD, &args) < 0) {
-        throw std::runtime_error("ioctl failed: IOCTL_LOAD_ELF_CMD");
+    if (bfm_write_ioctl(fd, IOCTL_CREATE_FROM_ELF_CMD, &args) < 0) {
+        throw std::runtime_error("ioctl failed: IOCTL_CREATE_FROM_ELF_CMD");
     }
 }

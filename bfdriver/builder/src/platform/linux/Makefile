@@ -23,6 +23,7 @@ ifneq ($(KERNELRELEASE),)
 
 	$(TARGET_MODULE)-objs += entry.o
 	$(TARGET_MODULE)-objs += platform.o
+	$(TARGET_MODULE)-objs += intrinsics.o
 	$(TARGET_MODULE)-objs += ../../common.o
 
 	EXTRA_CFLAGS += -DKERNEL
@@ -30,7 +31,7 @@ ifneq ($(KERNELRELEASE),)
 	EXTRA_CFLAGS += -I$(SOURCE_ROOT_DIR)/bfsdk/include/
 	EXTRA_CFLAGS += -I$(SOURCE_ROOT_DIR)/bfelf_loader/include/
 	EXTRA_CFLAGS += -I$(src)/../../../include/
-	EXTRA_CFLAGS += -I$(src)/../../../../../include/
+	EXTRA_CFLAGS += -I$(src)/../../../../../bfsdk/include/
 
 else
 	BUILDSYSTEM_DIR:=/lib/modules/$(shell uname -r)/build

@@ -17,100 +17,108 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 #include <bfgsl.h>
-#include <args.hxx>
+#include <bfdebug.h>
+#include <bfstring.h>
+#include <bfaffinity.h>
+#include <bfbuilderinterface.h>
 
 #include <list>
-#include <string>
 #include <memory>
+#include <fstream>
 #include <iostream>
 
+#include <args.h>
+#include <cmdl.h>
+#include <file.h>
 #include <ioctl.h>
-#include <builderinterface.h>
 
 #include <hve/arch/intel_x64/xen/public/xen.h>
 #include <hve/arch/intel_x64/xen/public/elfnote.h>
 
 auto ctl = std::make_unique<ioctl>();
 
-args::ArgumentParser args_parser("executes a virtual machine");
-args::HelpFlag args_help(args_parser, "help", "Display this help menu", {'h', "help"});
-
-args::Group args_elf(args_parser, "Loading ELF files:");
-args::Flag args_elf_enable(args_elf, "", "Create a VM using an ELF file", {"elf"});
-args::ValueFlag<std::string> args_elf_path(args_elf, "path", "The path to the ELF file to use", {"path"});
-args::ValueFlag<uint64_t> args_elf_ram_size(args_elf, "bytes", "Total size of RAM in bytes", {"ram"});
-args::ValueFlag<uint64_t> args_elf_uart(args_elf, "port #", "The port # to connect a UART to", {"uart"});
-args::ValueFlag<std::string> args_elf_init(args_elf, "path", "The init process to start", {"init"});
-args::ValueFlag<uint64_t> args_elf_domainid(args_elf, "domainid", "The domainid to attach to", {"domaind"});
-
 static int
-build_elf()
+attach_to_vm(const args_type &args)
 {
-    std::string cmdline;
-    struct load_elf_args args{};
-
-    if (!args_elf_path || args::get(args_elf_path).empty()) {
-        throw std::runtime_error("Must specify --path");
-    }
-
-    std::ifstream stream(args::get(args_elf_path), std::ios::binary);
-    if (!file.is_open()) {
-        throw std::runtime_error("Unable to open ELF file");
-    }
-
-    std::vector<uint8_t> file(std::istreambuf_iterator<uint8_t>(stream), {});
-    uint64_t domainid = DOMID_INVALID;
-    uint64_t ram_size = file.length() * 2;
-
-    if (!elf_enable) {
-    }
-
-    args.file = file.data();
-    args.file_length = file.length();
-    args.cmdline = cmdline.data();
-    args.cmdline_length = cmdline.length();
-    args.domainid = domainid;
-    args.ram_size = ram_size;
-
-    ctl.call_ioctl_load_elf(args);
+    bfignored(args);
+    throw std::runtime_error("not supported yet!!!");
 }
 
+static int
+create_elf_vm(const args_type &args)
+{
+    struct create_from_elf_args ioctl_args{};
 
-//auto default_cmdline = console=uart,io,0x3F8,115200n8 init=/hello
+    if (!args.count("path")) {
+        throw cxxopts::OptionException("must specify --path");
+    }
+
+    bfn::cmdl cmdl;
+    bfn::file file(args["path"].as<std::string>());
+
+    uint64_t size = file.size() * 2;
+    if (args.count("size")) {
+        size = args["size"].as<uint64_t>();
+    }
+
+    uint64_t uart = 0;
+    if (args.count("uart")) {
+        uart = args["uart"].as<uint64_t>();
+        cmdl.add(
+            "console=uart,io," + bfn::to_string(uart, 16) + ",115200n8"
+        );
+    }
+
+    if (args.count("init")) {
+        cmdl.add("init=" + args["init"].as<std::string>());
+    }
+
+    ioctl_args.file = file.data();
+    ioctl_args.file_size = file.size();
+    ioctl_args.cmdl = cmdl.data();
+    ioctl_args.cmdl_size = cmdl.size();
+    ioctl_args.uart = uart;
+    ioctl_args.size = size;
+
+    std::cout << bfcolor_magenta "------------------------------------------------------------\n" bfcolor_end;
+    std::cout << bfcolor_blue "Creating VM from ELF file\n" bfcolor_end;
+    std::cout << bfcolor_magenta "------------------------------------------------------------\n" bfcolor_end;
+    std::cout << "path: " << bfcolor_green << file.path() << bfcolor_end "\n";
+    std::cout << "size: " << bfcolor_green << size << bfcolor_end "\n";
+    std::cout << "cmdl: " << bfcolor_green << cmdl.data() << bfcolor_end "\n";
+
+    ctl->call_ioctl_create_from_elf(ioctl_args);
+    ctl->call_ioctl_destroy(ioctl_args);
+
+    return EXIT_SUCCESS;
+}
 
 static int
-protected_main(int argc, const char *argv[])
+protected_main(const args_type &args)
 {
-    try {
-        parser.ParseCLI(argc, argv);
-    }
-    catch (args::Help) {
-        std::cout << parser;
-        return EXIT_SUCCESS;
-    }
-    catch (args::ParseError e) {
-        std::cerr << e.what() << std::endl;
-        std::cerr << parser;
-        return EXIT_FAILURE;
-    }
-    catch (args::ValidationError e) {
-        std::cerr << e.what() << std::endl;
-        std::cerr << parser;
-        return EXIT_FAILURE;
+    if (args.count("attach")) {
+        return attach_to_vm(args);
     }
 
-    if (!elf_enable) {
-        throw std::runtime_error("Must specify --elf");
+    if (args.count("elf")) {
+        return create_elf_vm(args);
     }
 
-    return build_elf();
+    throw cxxopts::OptionException(
+        "must specify --elf or --attach");
 }
 
 int
-main(int argc, const char *argv[])
+main(int argc, char *argv[])
 {
+    set_affinity(0);
+
     try {
-        return protected_main(argc, argv);
+        args_type args = parse_args(argc, argv);
+        return protected_main(args);
+    }
+    catch (const cxxopts::OptionException &e) {
+        std::cerr << "invalid arguments: " << e.what() << '\n';
     }
     catch (const std::exception &e) {
         std::cerr << "Caught unhandled exception:" << '\n';
