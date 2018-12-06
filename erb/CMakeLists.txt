@@ -26,7 +26,7 @@ include_dependency(HK_SOURCE_DEPENDS_DIR buildroot)
 # ------------------------------------------------------------------------------
 
 add_custom_target(vm COMMAND make O=${BR_BIN_DIR} -C ${BR_SRC_DIR})
-add_custom_target(vm-run COMMAND ${SUDO} ${USERSPACE_PREFIX_PATH}/bin/bfexec ${BR_BIN_DIR}/images/vmlinux)
+add_custom_target(vm-run COMMAND ${SUDO} ${USERSPACE_PREFIX_PATH}/bin/bfexec ${USERSPACE_PREFIX_PATH}/bin/vmlinux)
 add_custom_target(vm-clean COMMAND make O=${BR_BIN_DIR} -C ${BR_SRC_DIR} clean)
 add_custom_target(vm-distclean COMMAND make O=${BR_BIN_DIR} -C ${BR_SRC_DIR} distclean)
 
@@ -37,6 +37,7 @@ add_custom_target_info(TARGET vm-distclean COMMENT "Clean build and config files
 
 set(BR_TARGET buildroot_${USERSPACE_PREFIX})
 add_dependencies(vm ${BR_TARGET})
+add_dependencies(vm-run vm)
 
 # ------------------------------------------------------------------------------
 # Reconfigure steps
@@ -80,4 +81,35 @@ ExternalProject_Add_Step(${BR_TARGET} reconfig-buildroot
     DEPENDERS build
     DEPENDS ${BR_CONFIG_IN}
     COMMENT "Re-configuring buildroot"
+)
+
+# ------------------------------------------------------------------------------
+# Menuconfig targets
+# ------------------------------------------------------------------------------
+if(ERB_LINUX_OVERRIDE)
+    set(SUFFIX "custom")
+else()
+    set(SUFFIX "hk")
+endif()
+set(LINUX_BIN_DIR ${BR_BIN_DIR}/build/linux-${SUFFIX})
+
+add_custom_target(lmc
+    COMMAND ${HK_UTIL_DIR}/menuconfig.sh ${LINUX_BIN_DIR} ${BR_CONFIG_LINUX_IN}
+    USES_TERMINAL
+)
+add_custom_target(bmc
+    COMMAND ${HK_UTIL_DIR}/menuconfig.sh ${BR_BIN_DIR} ${BR_CONFIG_IN}
+    USES_TERMINAL
+)
+
+add_custom_target_info(TARGET lmc COMMENT "Run linux\\'s menuconfig")
+add_custom_target_info(TARGET bmc COMMENT "Run buildroot\\'s menuconfig")
+
+# ------------------------------------------------------------------------------
+# Install
+# ------------------------------------------------------------------------------
+
+install(
+    FILES ${BR_BIN_DIR}/images/vmlinux
+    DESTINATION ${USERSPACE_PREFIX_PATH}/bin
 )

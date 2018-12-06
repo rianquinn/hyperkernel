@@ -101,7 +101,7 @@ add_config(
     DEFAULT_VAL "tiny"
     DESCRIPTION "The guest image to build"
     OPTIONS "tiny"
-    OPTIONS "demo-gigabyte"
+    OPTIONS "ndvm-r8169"
 )
 
 add_config(

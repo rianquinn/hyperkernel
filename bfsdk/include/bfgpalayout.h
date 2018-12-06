@@ -59,5 +59,6 @@
 #define ACPI_DSDT_GPA       0x9000
 
 #define LAPIC_GPA           0xFEE00000
+#define IOAPIC_GPA           0xFEC00000
 
 #endif
