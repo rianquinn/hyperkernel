@@ -210,8 +210,16 @@ private:
     void EVTCHNOP_bind_vcpu_handler(gsl::not_null<vcpu *> vcpu);
 
     // -------------------------------------------------------------------------
-    // Local APIC
+    // APIC
     // -------------------------------------------------------------------------
+
+    using rip_cache_t = std::unordered_map<uint64_t, eapis::x64::unique_map<uint8_t>>;
+
+    uint8_t *map_rip(rip_cache_t &rc, uint64_t rip, uint64_t len);
+
+    bool ioapic_handle_write(
+        gsl::not_null<vcpu_t *> vcpu,
+        eapis::intel_x64::ept_violation_handler::info_t &info);
 
     bool xapic_handle_write(
         gsl::not_null<vcpu_t *> vcpu,
@@ -240,7 +248,9 @@ private:
     uint64_t m_tsc_freq_khz{};
 
     std::unordered_map<uint32_t, uint64_t> m_msrs;
-    std::unordered_map<uint64_t, eapis::x64::unique_map<uint8_t>> m_xapic_rip_cache;
+
+    rip_cache_t m_rc_xapic;
+    rip_cache_t m_rc_ioapic;
 
 private:
 

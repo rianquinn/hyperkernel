@@ -36,6 +36,26 @@ namespace intel_x64
 namespace vtd
 {
 
+// The mapping of IOAPIC RTEs to VT-d IRTEs is given
+// in section 5.1.5.1 of the VT-d spec
+
+inline uint64_t rte_vector(uint64_t rte)
+{ return rte & 0xFF; }
+
+inline uint64_t rte_trig_mode(uint64_t rte)
+{ return (rte & (1UL << 15)) >> 15; }
+
+inline uint64_t rte_mask(uint64_t rte)
+{ return (rte & (1UL << 16)) >> 16; }
+
+inline uint64_t rte_index(uint64_t rte)
+{
+    uint64_t idx15 = (rte & (1UL << 11)) << 4;
+    uint64_t idx1400 = (rte & 0xFFFE000000000000ULL) >> 49;
+
+    return idx15 | idx1400;
+}
+
 // VT-d Interrupt Remapping Map
 class imap
 {

@@ -257,6 +257,7 @@ xen_op_handler::xen_op_handler(
     vcpu->pass_through_io_accesses(0xEFFC);
     vcpu->pass_through_io_accesses(0xEFFD);
 
+    ADD_EPT_WRITE_HANDLER(ioapic_handle_write);
     ADD_EPT_WRITE_HANDLER(xapic_handle_write);
     EMULATE_CPUID(0xBF00, cpuid_ack_handler);
 
@@ -520,6 +521,25 @@ xen_op_handler::xapic_handle_write_lvt_timer(uint64_t val)
     m_vcpu->lapic_write(lvt::timer::indx, val);
 }
 
+uint8_t *
+xen_op_handler::map_rip(xen_op_handler::rip_cache_t &rc, uint64_t rip, uint64_t len)
+{
+    auto itr = rc.find(rip);
+    if (itr != rc.end()) {
+        return itr->second.get();
+    }
+
+    auto ump = m_vcpu->map_gva_4k<uint8_t>(rip, len);
+    if (!ump) {
+        throw std::runtime_error("handle_xapic_write::map_gva_4k failed");
+    }
+
+    rc[rip] = std::move(ump);
+    itr = rc.find(rip);
+
+    return itr->second.get();
+}
+
 bool
 xen_op_handler::xapic_handle_write(
     gsl::not_null<vcpu_t *> vcpu,
@@ -537,20 +557,11 @@ xen_op_handler::xapic_handle_write(
         return true;
     }
 
-    const auto len = ::intel_x64::vmcs::vm_exit_instruction_length::get();
     const auto rip = ::intel_x64::vmcs::guest_rip::get();
-    auto itr = m_xapic_rip_cache.find(rip);
-    if (itr == m_xapic_rip_cache.end()) {
-        auto ump = m_vcpu->map_gva_4k<uint8_t>(rip, len);
-        if (!ump) {
-            throw std::runtime_error("handle_xapic_write::map_gva_4k failed");
-        }
+    const auto len = ::intel_x64::vmcs::vm_exit_instruction_length::get();
+    const auto buf = this->map_rip(m_rc_xapic, rip, len);
 
-        m_xapic_rip_cache[rip] = std::move(ump);
-        itr = m_xapic_rip_cache.find(rip);
-    }
-
-    hyperkernel::intel_x64::insn_decoder dec(itr->second.get(), len);
+    hyperkernel::intel_x64::insn_decoder dec(buf, len);
     const auto val = src_op_value(vcpu, dec.src_op());
     switch (idx) {
         case icr_low::indx:
@@ -575,10 +586,43 @@ xen_op_handler::xapic_handle_write(
         case 0xd0:
             bfalert_info(0, "received perf interrupt");
             break;
-
         default:
             bfalert_nhex(0, "unhandled xapic write indx:", idx);
             return false;
+    }
+
+    info.ignore_advance = false;
+    return true;
+}
+
+bool
+xen_op_handler::ioapic_handle_write(
+    gsl::not_null<vcpu_t *> vcpu,
+    eapis::intel_x64::ept_violation_handler::info_t &info)
+{
+    using namespace eapis::intel_x64::ioapic;
+
+    if (bfn::upper(info.gpa) != m_vcpu->ioapic_base()) {
+        return false;
+    }
+
+    const auto rip = ::intel_x64::vmcs::guest_rip::get();
+    const auto len = ::intel_x64::vmcs::vm_exit_instruction_length::get();
+    const auto buf = this->map_rip(m_rc_ioapic, rip, len);
+
+    hyperkernel::intel_x64::insn_decoder dec(buf, len);
+    const auto val = src_op_value(vcpu, dec.src_op());
+    switch (info.gpa & 0xFF) {
+        case sel_offset:
+            m_vcpu->ioapic_select(val);
+            m_vcpu->ioapic_set_window(m_vcpu->ioapic_read());
+            break;
+        case win_offset:
+            m_vcpu->ioapic_write(val);
+            m_vcpu->ioapic_set_window(val);
+        default:
+            throw std::invalid_argument("Invalid IOAPIC write: " +
+                                        std::to_string(info.gpa));
     }
 
     info.ignore_advance = false;
