@@ -28,7 +28,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/scripts/cmake/config/default.cmake)
 
 # Build a bootable guest image
 #
-if(HK_BUILD_GUEST)
+if(HK_BUILD_GUEST AND NOT WIN32 AND NOT CYGWIN)
     include(${HK_ERB_DIR}/CMakeLists.txt)
 endif()
 
