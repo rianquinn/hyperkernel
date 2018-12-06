@@ -52,10 +52,6 @@ struct vm_t {
  * with the contents of the provided ELF file, and then set up the guest's
  * memory map.
  *
- * Note that this function takes a VM object. This object will be cleared
- * by this function so it should point to a VM object that is currently
- * not being used by another VM (i.e. unsused).
- *
  * @param vm the vm_t object associated with the vm
  * @param args the create_from_elf_args arguments needed to create the VM
  * @return BF_SUCCESS on success, negative error code on failure

@@ -34,6 +34,67 @@
 struct vm_t g_vms[MAX_VMS] = {0};
 
 /* -------------------------------------------------------------------------- */
+/* VM Helpers                                                                 */
+/* -------------------------------------------------------------------------- */
+
+DEFINE_MUTEX(g_vm_mutex);
+
+static struct vm_t *
+acquire_vm(void)
+{
+    int64_t i;
+    struct vm_t *vm = 0;
+
+    mutex_lock(&g_vm_mutex);
+
+    for (i = 0; i < MAX_VMS; i++) {
+        vm = &g_vms[i];
+        if (vm->used == 0) {
+            break;
+        }
+    }
+
+    if (i == MAX_VMS) {
+        BFALERT("MAX_VMS reached. No more VMs can be created\n");
+        goto done;
+    }
+
+    platform_memset(vm, 0, sizeof(struct vm_t));
+    vm->used = 1;
+
+done:
+
+    mutex_unlock(&g_vm_mutex);
+    return vm;
+}
+
+static struct vm_t *
+get_vm(domainid_t domainid)
+{
+    int64_t i;
+    struct vm_t *vm = 0;
+
+    mutex_lock(&g_vm_mutex);
+
+    for (i = 0; i < MAX_VMS; i++) {
+        vm = &g_vms[i];
+        if (vm->used == 1 && vm->domainid == domainid) {
+            break;
+        }
+    }
+
+    if (i == MAX_VMS) {
+        BFALERT("MAX_VMS reached. Could not locate VM\n");
+        goto done;
+    }
+
+done:
+
+    mutex_unlock(&g_vm_mutex);
+    return vm;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Misc Device                                                                */
 /* -------------------------------------------------------------------------- */
 
@@ -52,93 +113,91 @@ dev_release(struct inode *inode, struct file *file)
 }
 
 static long
-ioctl_create_from_elf(const struct create_from_elf_args *args)
+ioctl_create_from_elf(struct create_from_elf_args *args)
 {
-    int64_t i;
     int64_t ret;
-    struct vm_t *vm;
-    struct create_from_elf_args user_ioctl_args;
-    struct create_from_elf_args kern_ioctl_args;
+    struct create_from_elf_args kern_args;
 
-    for (i = 0; i < MAX_VMS; i++) {
-        vm = &g_vms[i];
-        if (vm->used == 0) {
-            break;
+    void *file = 0;
+    void *cmdl = 0;
+
+    ret = copy_from_user(
+        &kern_args, args, sizeof(struct create_from_elf_args));
+    if (ret != 0) {
+        BFALERT("IOCTL_CREATE_FROM_ELF: failed to copy args from userspace\n");
+        return BF_IOCTL_FAILURE;
+    }
+
+    if (kern_args.file_size != 0) {
+        file = platform_alloc_rw(kern_args.file_size);
+        if (file == NULL) {
+            BFALERT("IOCTL_CREATE_FROM_ELF: failed to allocate memory for file\n");
+            goto failed;
         }
+
+        ret = copy_from_user(
+            file, kern_args.file, kern_args.file_size);
+        if (ret != 0) {
+            BFALERT("IOCTL_CREATE_FROM_ELF: failed to copy file from userspace\n");
+            goto failed;
+        }
+
+        kern_args.file = file;
     }
 
-    if (i == MAX_VMS) {
-        BFALERT("MAX_VMS reached. No more VMs can be created\n");
-        return BF_IOCTL_FAILURE;
+    if (kern_args.cmdl_size != 0) {
+        cmdl = platform_alloc_rw(kern_args.cmdl_size);
+        if (cmdl == NULL) {
+            BFALERT("IOCTL_CREATE_FROM_ELF: failed to allocate memory for file\n");
+            goto failed;
+        }
+
+        ret = copy_from_user(
+            cmdl, kern_args.cmdl, kern_args.cmdl_size);
+        if (ret != 0) {
+            BFALERT("IOCTL_CREATE_FROM_ELF: failed to copy cmdl from userspace\n");
+            goto failed;
+        }
+
+        kern_args.cmdl = cmdl;
     }
 
-    ret = copy_from_user(
-        &user_ioctl_args, args, sizeof(struct create_from_elf_args));
-    if (ret != 0) {
-        BFALERT("IOCTL_CREATE_FROM_ELF: failed to copy args from userspace\n");
-        return BF_IOCTL_FAILURE;
-    }
-
-    ret = copy_from_user(
-        &kern_ioctl_args, args, sizeof(struct create_from_elf_args));
-    if (ret != 0) {
-        BFALERT("IOCTL_CREATE_FROM_ELF: failed to copy args from userspace\n");
-        return BF_IOCTL_FAILURE;
-    }
-
-    kern_ioctl_args.file = platform_alloc_rw(user_ioctl_args.file_size);
-    if (kern_ioctl_args.file == NULL) {
-        BFALERT("IOCTL_CREATE_FROM_ELF: failed to allocate memory for file\n");
-        goto failed;
-    }
-
-    kern_ioctl_args.cmdl = platform_alloc_rw(user_ioctl_args.cmdl_size);
-    if (kern_ioctl_args.cmdl == NULL) {
-        BFALERT("IOCTL_CREATE_FROM_ELF: failed to allocate memory for file\n");
-        goto failed;
-    }
-
-    ret = copy_from_user(
-        (void *)kern_ioctl_args.file, user_ioctl_args.file, user_ioctl_args.file_size);
-    if (ret != 0) {
-        BFALERT("IOCTL_CREATE_FROM_ELF: failed to copy file from userspace\n");
-        goto failed;
-    }
-
-    ret = copy_from_user(
-        (void *)kern_ioctl_args.cmdl, user_ioctl_args.cmdl, user_ioctl_args.cmdl_size);
-    if (ret != 0) {
-        BFALERT("IOCTL_CREATE_FROM_ELF: failed to copy cmdl from userspace\n");
-        goto failed;
-    }
-
-    ret = common_create_from_elf(vm, &kern_ioctl_args);
+    ret = common_create_from_elf(acquire_vm(), &kern_args);
     if (ret != BF_SUCCESS) {
         BFDEBUG("common_create_from_elf failed: %llx\n", ret);
         goto failed;
     }
 
-    platform_free_rw((void *)kern_ioctl_args.file, kern_ioctl_args.file_size);
-    platform_free_rw((void *)kern_ioctl_args.cmdl, kern_ioctl_args.cmdl_size);
+    kern_args.file = 0;
+    kern_args.cmdl = 0;
+
+    ret = copy_to_user(
+        args, &kern_args, sizeof(struct create_from_elf_args));
+    if (ret != 0) {
+        BFALERT("IOCTL_CREATE_FROM_ELF: failed to copy args to userspace\n");
+        common_destroy(get_vm(kern_args.domainid));
+        goto failed;
+    }
+
+    platform_free_rw(file, kern_args.file_size);
+    platform_free_rw(cmdl, kern_args.cmdl_size);
 
     BFDEBUG("IOCTL_CREATE_FROM_ELF: succeeded\n");
     return BF_IOCTL_SUCCESS;
 
 failed:
 
-    platform_free_rw((void *)kern_ioctl_args.file, kern_ioctl_args.file_size);
-    platform_free_rw((void *)kern_ioctl_args.cmdl, kern_ioctl_args.cmdl_size);
+    platform_free_rw(file, kern_args.file_size);
+    platform_free_rw(cmdl, kern_args.cmdl_size);
 
     BFALERT("IOCTL_CREATE_FROM_ELF: failed\n");
     return BF_IOCTL_FAILURE;
 }
 
 static long
-ioctl_destroy(const domainid_t *args)
+ioctl_destroy(domainid_t *args)
 {
-    int64_t i;
     int64_t ret;
-    struct vm_t *vm;
     domainid_t domainid;
 
     ret = copy_from_user(&domainid, args, sizeof(domainid_t));
@@ -147,19 +206,7 @@ ioctl_destroy(const domainid_t *args)
         return BF_IOCTL_FAILURE;
     }
 
-    for (i = 0; i < MAX_VMS; i++) {
-        vm = &g_vms[i];
-        if (vm->used == 1 && vm->domainid == domainid) {
-            break;
-        }
-    }
-
-    if (i == MAX_VMS) {
-        BFALERT("MAX_VMS reached. Unable to locate VM\n");
-        return BF_IOCTL_FAILURE;
-    }
-
-    ret = common_destroy(vm);
+    ret = common_destroy(get_vm(domainid));
     if (ret != BF_SUCCESS) {
         BFDEBUG("common_destroy failed: %llx\n", ret);
         return BF_IOCTL_FAILURE;
@@ -205,6 +252,8 @@ static struct miscdevice builder_dev = {
 int
 dev_init(void)
 {
+    mutex_init(&g_vm_mutex);
+
     if (misc_register(&builder_dev) != 0) {
         BFALERT("misc_register failed\n");
         return -EPERM;

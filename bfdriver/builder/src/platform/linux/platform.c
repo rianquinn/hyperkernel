@@ -73,7 +73,6 @@ platform_free_rw(void *addr, uint64_t len)
     bfignored(len);
 
     if (addr == nullptr) {
-        BFALERT("platform_free_rw: invalid address %p\n", addr);
         return;
     }
 
@@ -86,7 +85,6 @@ platform_free_rwe(void *addr, uint64_t len)
     bfignored(len);
 
     if (addr == nullptr) {
-        BFALERT("platform_free_rwe: invalid address %p\n", addr);
         return;
     }
 

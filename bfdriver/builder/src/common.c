@@ -18,16 +18,10 @@
  */
 
 #include <bfdebug.h>
+#include <bfgpalayout.h>
 #include <bfhypercall.h>
 
 #include <common.h>
-
-// /* -------------------------------------------------------------------------- */
-// /* Global                                                                     */
-// /* -------------------------------------------------------------------------- */
-
-// uint64_t g_ram_addr = 0x1000000;
-// uint64_t g_ram_size = 0;
 
 // /* -------------------------------------------------------------------------- */
 // /* Domain Functions                                                           */
@@ -38,7 +32,7 @@
 // {
 //     status_t ret;
 
-//     ret = __domain_op__map_gpa(g_vm.domainid, gva, gpa, type);
+//     ret = __domain_op__map_gpa(vm->domainid, gva, gpa, type);
 //     if (ret != SUCCESS) {
 //         BFALERT("__domain_op__map_gpa failed\n");
 //         return FAILURE;
@@ -68,25 +62,26 @@
 // }
 
 
-// status_t
-// domain_op__map_buffer(
-//     uint64_t gva, uint64_t gpa, uint64_t size, uint64_t type)
-// {
-//     uint64_t index;
+status_t
+domain_op__map_buffer(
+    uint64_t gva, uint64_t gpa, uint64_t size, uint64_t type)
+{
+    uint64_t index;
 
-//     for (index = 0; index < size; index += 0x1000) {
-//         status_t ret = domain_op__map_gpa(
-//             gva + index, gpa + index, type
-//         );
+    for (index = 0; index < size; index += 0x1000) {
+        status_t ret =
+            domain_op__map_gpa(
+                platform_virt_to_phys(gva + index), gpa + index, type
+            );
 
-//         if (ret != SUCCESS) {
-//             BFALERT("map_mem failed\n");
-//             return FAILURE;
-//         }
-//     }
+        if (ret != SUCCESS) {
+            BFALERT("map_mem failed\n");
+            return FAILURE;
+        }
+    }
 
-//     return SUCCESS;
-// }
+    return SUCCESS;
+}
 
 // /* -------------------------------------------------------------------------- */
 // /* E820 Map                                                                   */
@@ -98,7 +93,7 @@
 //     status_t ret;
 
 //     ret = __domain_op__add_e820_entry(
-//         g_vm.domainid,
+//         vm->domainid,
 //         0,
 //         0x1000,
 //         XEN_HVM_MEMMAP_TYPE_UNUSABLE
@@ -110,7 +105,7 @@
 //     }
 
 //     ret = __domain_op__add_e820_entry(
-//         g_vm.domainid,
+//         vm->domainid,
 //         0x1000,
 //         0x5000,
 //         XEN_HVM_MEMMAP_TYPE_RESERVED
@@ -122,7 +117,7 @@
 //     }
 
 //     ret = __domain_op__add_e820_entry(
-//         g_vm.domainid,
+//         vm->domainid,
 //         0x6000,
 //         0x1000,
 //         XEN_HVM_MEMMAP_TYPE_RAM
@@ -134,7 +129,7 @@
 //     }
 
 //     ret = __domain_op__add_e820_entry(
-//         g_vm.domainid,
+//         vm->domainid,
 //         0x7000,
 //         0x1000,
 //         XEN_HVM_MEMMAP_TYPE_RAM
@@ -146,7 +141,7 @@
 //     }
 
 //     ret = __domain_op__add_e820_entry(
-//         g_vm.domainid,
+//         vm->domainid,
 //         0x8000,
 //         0x1000,
 //         XEN_HVM_MEMMAP_TYPE_RAM
@@ -158,7 +153,7 @@
 //     }
 
 //     // ret = __domain_op__add_e820_entry(
-//     //     g_vm.domainid,
+//     //     vm->domainid,
 //     //     0x9000,
 //     //     0x1000,
 //     //     XEN_HVM_MEMMAP_TYPE_RAM
@@ -170,7 +165,7 @@
 //     // }
 
 //     ret = __domain_op__add_e820_entry(
-//         g_vm.domainid,
+//         vm->domainid,
 //         0xA000,
 //         REAL_MODE_SIZE,
 //         XEN_HVM_MEMMAP_TYPE_RAM
@@ -182,7 +177,7 @@
 //     }
 
 //     ret = __domain_op__add_e820_entry(
-//         g_vm.domainid,
+//         vm->domainid,
 //         0xA000 + REAL_MODE_SIZE,
 //         g_ram_addr - (0xA000 + REAL_MODE_SIZE),
 //         XEN_HVM_MEMMAP_TYPE_UNUSABLE
@@ -194,7 +189,7 @@
 //     }
 
 //     ret = __domain_op__add_e820_entry(
-//         g_vm.domainid,
+//         vm->domainid,
 //         g_ram_addr,
 //         g_ram_size,
 //         XEN_HVM_MEMMAP_TYPE_RAM
@@ -234,7 +229,7 @@
 //         return FAILURE;
 //     }
 
-//     ret = __vcpu_op__set_rbx(g_vm.vcpuid, 0x4000);
+//     ret = __vcpu_op__set_rbx(vm->vcpuid, 0x4000);
 //     if (ret != SUCCESS) {
 //         BFALERT("__vcpu_op__set_rbx failed\n");
 //         return FAILURE;
@@ -427,51 +422,19 @@
 //     return SUCCESS;
 // }
 
-// /* -------------------------------------------------------------------------- */
-// /* Helpers                                                                    */
-// /* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/* ELF Loader                                                                 */
+/* -------------------------------------------------------------------------- */
 
-// status_t
-// binary_load(void)
-// {
-//     status_t ret;
-//     uint64_t gva;
+status_t
+binary_load(struct vm_t *vm)
+{
+    status_t ret;
+    struct bfelf_binary_t *b = &vm->bfelf_binary;
 
-//     /**
-//      * NOTE:
-//      *
-//      * For PIE, we need to provide an address (g_ram_addr). This will be
-//      * overwritten if the binary is non-PIE (i.e. static), which is why we
-//      * have to get the start address again after we call bfelf_load
-//      *
-//      * NOTE:
-//      *
-//      * This is where we allocate RAM. We let the ELF loader allocate RAM for
-//      * us, and fill in the first part of RAM with the ELF file. The ELF
-//      * loader will ensure RAM is zero'd out, and will ensure the RAM is page
-//      * aligned, which is needed for mapping.
-//     */
 
-//     g_vm.bfelf_binary.exec_size = g_ram_size;
-//     g_vm.bfelf_binary.start_addr = (void *)g_ram_addr;
-
-//     ret = bfelf_load(&g_vm.bfelf_binary, 1, &g_vm.entry, &g_vm.crt_info, &g_vm.bfelf_loader);
-//     if (ret != BF_SUCCESS) {
-//         BFALERT("bfelf_load: 0x%016" PRIx64 "\n", ret);
-//         return FAILURE;
-//     }
-
-//     gva = (uint64_t)g_vm.bfelf_binary.exec;
-//     g_ram_addr = (uint64_t)g_vm.bfelf_binary.start_addr;
-
-//     ret = domain_op__map_buffer(gva, g_ram_addr, g_ram_size, MAP_RWE);
-//     if (ret != SUCCESS) {
-//         BFALERT("bfelf_load: 0x%016" PRIx64 "\n", ret);
-//         return FAILURE;
-//     }
-
-//     return SUCCESS;
-// }
+    return SUCCESS;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Implementation                                                             */
@@ -481,13 +444,9 @@ int64_t
 common_create_from_elf(
     struct vm_t *vm, struct create_from_elf_args *args)
 {
-    args->domainid = INVALID_DOMAINID;
-
     if (_cpuid_eax(0xBF00) != 0xBF01) {
         return HYPERVISOR_NOT_LOADED;
     }
-
-    platform_memset(vm, 0, sizeof(struct vm_t));
 
     vm->domainid = __domain_op__create_domain();
     if (vm->domainid == INVALID_DOMAINID) {
@@ -495,12 +454,25 @@ common_create_from_elf(
         return CREATE_FROM_ELF_FAILED;
     }
 
-    // g_vm.bfelf_binary.file = data;
-    // g_vm.bfelf_binary.file_size = size;
+    vm->bfelf_binary.file = args->file;
+    vm->bfelf_binary.file_size = args->file_size;
+    vm->bfelf_binary.exec = 0;
+    vm->bfelf_binary.exec_size = args->size;
+    vm->bfelf_binary.start_addr = START_ADDR;
 
-    vm->used = 1;
+    ret = bfelf_load(b, 1, &vm->entry, &vm->crt_info, &vm->bfelf_loader);
+    if (ret != BF_SUCCESS) {
+        BFALERT("bfelf_load: 0x%016" PRIx64 "\n", ret);
+        return FAILURE;
+    }
+
+    ret = domain_op__map_buffer(b->exec, b->start_addr, b->exec_size, MAP_RWE);
+    if (ret != SUCCESS) {
+        BFALERT("bfelf_load: 0x%016" PRIx64 "\n", ret);
+        return FAILURE;
+    }
+
     args->domainid = vm->domainid;
-
     return BF_SUCCESS;
 }
 

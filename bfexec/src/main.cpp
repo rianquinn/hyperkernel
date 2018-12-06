@@ -90,6 +90,7 @@ create_elf_vm(const args_type &args)
     }
 
     ctl->call_ioctl_create_from_elf(ioctl_args);
+std::cout << ioctl_args.domainid << "\n";
     ctl->call_ioctl_destroy(ioctl_args.domainid);
 
     return EXIT_SUCCESS;
