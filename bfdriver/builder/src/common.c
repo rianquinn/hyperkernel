@@ -17,210 +17,113 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <common.h>
+
 #include <bfdebug.h>
 #include <bfgpalayout.h>
 #include <bfhypercall.h>
 
-#include <common.h>
+#define bfalloc_page(a) (a *)platform_memset(platform_alloc_rwe(0x1000), 0, 0x1000);
+
+/* -------------------------------------------------------------------------- */
+/* E820 Functions                                                             */
+/* -------------------------------------------------------------------------- */
+
+int64_t
+add_e820_entry(void *vm, uint64_t saddr, uint64_t eaddr, uint32_t type)
+{
+    status_t ret;
+    struct vm_t *_vm = (struct vm_t *)vm;
+
+    ret = __domain_op__add_e820_entry(_vm->domainid, saddr, eaddr - saddr, type);
+    if (ret != SUCCESS) {
+        BFALERT("__domain_op__add_e820_entry: failed\n");
+    }
+
+    return ret;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Donate Functions                                                           */
 /* -------------------------------------------------------------------------- */
 
 status_t
-donate_buffer(
-    domainid_t domainid, uint64_t gva, uint64_t domain_gpa, uint64_t size, uint64_t type)
+donate_page(
+    struct vm_t *vm, void *gva, uint64_t domain_gpa, uint64_t type)
 {
-    uint64_t i;
+    status_t ret;
+    uint64_t gpa = (uint64_t)platform_virt_to_phys(gva);
 
-    for (i = 0; i < size; i += 0x1000) {
-        status_t ret = 0;
-        uint64_t gpa = (uint64_t)platform_virt_to_phys((void *)(gva + i));
-
-        ret = __domain_op__donate_gpa(domainid, gpa, domain_gpa + i, type);
-        if (ret != SUCCESS) {
-            BFALERT("donate_buffer: __domain_op__donate_gpa failed\n");
-            return FAILURE;
-        }
+    ret = __domain_op__donate_page(vm->domainid, gpa, domain_gpa, type);
+    if (ret != SUCCESS) {
+        BFALERT("donate_page: __domain_op__donate_gpa failed\n");
     }
 
-    return SUCCESS;
+    return ret;
 }
 
 status_t
-donate_single_gpa_to_buffer(
-    domainid_t domainid, uint64_t gva, uint64_t domain_gpa, uint64_t size)
+donate_buffer(
+    struct vm_t *vm, void *gva, uint64_t domain_gpa, uint64_t size, uint64_t type)
 {
     uint64_t i;
-    uint64_t gpa = (uint64_t)platform_virt_to_phys((void *)gva);
+    status_t ret;
 
     for (i = 0; i < size; i += 0x1000) {
-        status_t ret = 0;
-
-        ret = __domain_op__donate_gpa(domainid, gpa, domain_gpa + i, MAP_RO);
+        ret = donate_page(vm, (char *)gva + i, domain_gpa + i, type);
         if (ret != SUCCESS) {
-            BFALERT("donate_single_gpa_to_buffer: __domain_op__donate_gpa failed\n");
-            return FAILURE;
+            return ret;
         }
     }
 
-    return SUCCESS;
+    return ret;
 }
 
-// /* -------------------------------------------------------------------------- */
-// /* E820 Map                                                                   */
-// /* -------------------------------------------------------------------------- */
+status_t
+donate_page_to_page_range(
+    struct vm_t *vm, void *gva, uint64_t domain_gpa, uint64_t size, uint64_t type)
+{
+    uint64_t i;
+    status_t ret;
 
-// status_t
-// setup_e820_map()
-// {
-//     status_t ret;
+    for (i = 0; i < size; i += 0x1000) {
+        ret = donate_page(vm, gva, domain_gpa + i, type);
+        if (ret != SUCCESS) {
+            return ret;
+        }
+    }
 
-//     ret = __domain_op__add_e820_entry(
-//         vm->domainid,
-//         0,
-//         0x1000,
-//         XEN_HVM_MEMMAP_TYPE_UNUSABLE
-//     );
+    return ret;
+}
 
-//     if (ret != SUCCESS) {
-//         BFALERT("__domain_op__add_e820_entry failed\n");
-//         return FAILURE;
-//     }
+/* -------------------------------------------------------------------------- */
+/* GPA Functions                                                              */
+/* -------------------------------------------------------------------------- */
 
-//     ret = __domain_op__add_e820_entry(
-//         vm->domainid,
-//         0x1000,
-//         0x5000,
-//         XEN_HVM_MEMMAP_TYPE_RESERVED
-//     );
+status_t
+setup_xen_start_info(struct vm_t *vm)
+{
+    status_t ret;
 
-//     if (ret != SUCCESS) {
-//         BFALERT("__domain_op__add_e820_entry failed\n");
-//         return FAILURE;
-//     }
+    vm->start_info = bfalloc_page(struct hvm_start_info);
+    if (vm->start_info == 0) {
+        BFALERT("setup_xen_start_info: failed to alloc start into page\n");
+        return FAILURE;
+    }
 
-//     ret = __domain_op__add_e820_entry(
-//         vm->domainid,
-//         0x6000,
-//         0x1000,
-//         XEN_HVM_MEMMAP_TYPE_RAM
-//     );
+    vm->start_info->magic = XEN_HVM_START_MAGIC_VALUE;
+    vm->start_info->version = 0;
+    vm->start_info->cmdline_paddr = XEN_COMMAND_LINE_PAGE_GPA;
+    vm->start_info->rsdp_paddr = ACPI_RSDP_GPA;
 
-//     if (ret != SUCCESS) {
-//         BFALERT("__domain_op__add_e820_entry failed\n");
-//         return FAILURE;
-//     }
+    ret = donate_page(vm, vm->start_info, XEN_START_INFO_PAGE_GPA, MAP_RO);
+    if (ret != BF_SUCCESS) {
+        BFALERT("setup_xen_start_info failed\n");
+        return ret;
+    }
 
-//     ret = __domain_op__add_e820_entry(
-//         vm->domainid,
-//         0x7000,
-//         0x1000,
-//         XEN_HVM_MEMMAP_TYPE_RAM
-//     );
-
-//     if (ret != SUCCESS) {
-//         BFALERT("__domain_op__add_e820_entry failed\n");
-//         return FAILURE;
-//     }
-
-//     ret = __domain_op__add_e820_entry(
-//         vm->domainid,
-//         0x8000,
-//         0x1000,
-//         XEN_HVM_MEMMAP_TYPE_RAM
-//     );
-
-//     if (ret != SUCCESS) {
-//         BFALERT("__domain_op__add_e820_entry failed\n");
-//         return FAILURE;
-//     }
-
-//     // ret = __domain_op__add_e820_entry(
-//     //     vm->domainid,
-//     //     0x9000,
-//     //     0x1000,
-//     //     XEN_HVM_MEMMAP_TYPE_RAM
-//     // );
-
-//     // if (ret != SUCCESS) {
-//     //     BFALERT("__domain_op__add_e820_entry failed\n");
-//     //     return FAILURE;
-//     // }
-
-//     ret = __domain_op__add_e820_entry(
-//         vm->domainid,
-//         0xA000,
-//         REAL_MODE_SIZE,
-//         XEN_HVM_MEMMAP_TYPE_RAM
-//     );
-
-//     if (ret != SUCCESS) {
-//         BFALERT("__domain_op__add_e820_entry failed\n");
-//         return FAILURE;
-//     }
-
-//     ret = __domain_op__add_e820_entry(
-//         vm->domainid,
-//         0xA000 + REAL_MODE_SIZE,
-//         g_ram_addr - (0xA000 + REAL_MODE_SIZE),
-//         XEN_HVM_MEMMAP_TYPE_UNUSABLE
-//     );
-
-//     if (ret != SUCCESS) {
-//         BFALERT("__domain_op__add_e820_entry failed\n");
-//         return FAILURE;
-//     }
-
-//     ret = __domain_op__add_e820_entry(
-//         vm->domainid,
-//         g_ram_addr,
-//         g_ram_size,
-//         XEN_HVM_MEMMAP_TYPE_RAM
-//     );
-
-//     if (ret != SUCCESS) {
-//         BFALERT("__domain_op__add_e820_entry failed\n");
-//         return FAILURE;
-//     }
-
-//     return SUCCESS;
-// }
-
-// /* -------------------------------------------------------------------------- */
-// /* Helpers                                                                    */
-// /* -------------------------------------------------------------------------- */
-
-// status_t
-// setup_xen_start_info()
-// {
-//     status_t ret;
-
-//     g_reserved_4000 = (reserved_4000_t *)alloc_page();
-//     if (g_reserved_4000 == 0) {
-//         BFALERT("g_reserved_4000 alloc failed: %s\n", strerror(errno));
-//         return FAILURE;
-//     }
-
-//     g_reserved_4000->start_info.magic = XEN_HVM_START_MAGIC_VALUE;
-//     g_reserved_4000->start_info.version = 0;
-//     g_reserved_4000->start_info.cmdline_paddr = 0x5000;
-//     g_reserved_4000->start_info.rsdp_paddr = ACPI_RSDP_GPA;
-
-//     ret = domain_op__map_gpa((uint64_t)g_reserved_4000, 0x4000, MAP_RO);
-//     if (ret != BF_SUCCESS) {
-//         BFALERT("__domain_op__map_gpa failed\n");
-//         return FAILURE;
-//     }
-
-//     ret = __vcpu_op__set_rbx(vm->vcpuid, 0x4000);
-//     if (ret != SUCCESS) {
-//         BFALERT("__vcpu_op__set_rbx failed\n");
-//         return FAILURE;
-//     }
-
-//     return SUCCESS;
-// }
+    return ret;
+}
 
 // status_t
 // setup_xen_cmdline()
@@ -415,7 +318,6 @@ common_create_from_elf(
     struct vm_t *vm, struct create_from_elf_args *args)
 {
     status_t ret;
-    uint64_t gva, gpa;
 
     if (_cpuid_eax(0xBF00) != 0xBF01) {
         return HYPERVISOR_NOT_LOADED;
@@ -427,25 +329,36 @@ common_create_from_elf(
         return CREATE_FROM_ELF_FAILED;
     }
 
-    vm->bfelf_binary.file = args->file;
-    vm->bfelf_binary.file_size = args->file_size;
-    vm->bfelf_binary.exec = 0;
-    vm->bfelf_binary.exec_size = args->size;
-    vm->bfelf_binary.start_addr = START_ADDR;
-
-    ret = bfelf_load(
-        &vm->bfelf_binary, 1, &vm->entry, &vm->crt_info, &vm->bfelf_loader);
-    if (ret != BF_SUCCESS) {
-        return ret;
-    }
-
-    gva = (uint64_t)vm->bfelf_binary.exec;
-    gpa = (uint64_t)START_ADDR;
-
-    ret = donate_buffer(vm->domainid, gva, gpa, args->size, MAP_RWE);
+    ret = setup_xen_start_info(vm);
     if (ret != SUCCESS) {
         return ret;
     }
+
+
+
+
+
+
+
+    // vm->bfelf_binary.file = args->file;
+    // vm->bfelf_binary.file_size = args->file_size;
+    // vm->bfelf_binary.exec = 0;
+    // vm->bfelf_binary.exec_size = args->size;
+    // vm->bfelf_binary.start_addr = START_ADDR;
+
+    // ret = bfelf_load(
+    //     &vm->bfelf_binary, 1, &vm->entry, &vm->crt_info, &vm->bfelf_loader);
+    // if (ret != BF_SUCCESS) {
+    //     return ret;
+    // }
+
+    // gva = (uint64_t)vm->bfelf_binary.exec;
+    // gpa = (uint64_t)START_ADDR;
+
+    // ret = donate_buffer(vm->domainid, gva, gpa, args->size, MAP_RWE);
+    // if (ret != SUCCESS) {
+    //     return ret;
+    // }
 
     args->domainid = vm->domainid;
     return BF_SUCCESS;
@@ -455,6 +368,10 @@ int64_t
 common_destroy(struct vm_t *vm)
 {
     status_t ret;
+
+    if (_cpuid_eax(0xBF00) != 0xBF01) {
+        return HYPERVISOR_NOT_LOADED;
+    }
 
     ret = __domain_op__destroy_domain(vm->domainid);
     if (ret != SUCCESS) {

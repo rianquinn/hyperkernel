@@ -38,6 +38,9 @@ void ioapic::init()
 {
     auto hpa = g_mm->virtptr_to_physint(m_ioapic_page.get());
     m_vcpu->map_4k_ro(this->base(), hpa);
+
+    this->select(ioapic_n::version::indx);
+    this->write(ioapic_n::version::reset_val);
 }
 
 uint32_t ioapic::id()

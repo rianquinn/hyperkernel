@@ -67,7 +67,7 @@ uint64_t _vmcall(uint64_t r1, uint64_t r2, uint64_t r3, uint64_t r4) NOEXCEPT;
 
 #define __enum_domain_op__create_domain 0x100
 #define __enum_domain_op__destroy_domain 0x101
-#define __enum_domain_op__donate_gpa 0x110
+#define __enum_domain_op__donate_page 0x110
 #define __enum_domain_op__add_e820_entry 0x111
 
 #define MAP_RO 1
@@ -79,7 +79,7 @@ typedef struct {
     uint64_t gpa;
     uint64_t domain_gpa;
     uint64_t type;
-} __domain_op__donate_gpa_arg_t;
+} __domain_op__donate_page_arg_t;
 
 typedef struct {
     domainid_t domainid;
@@ -113,16 +113,16 @@ __domain_op__destroy_domain(domainid_t domainid)
 }
 
 static inline status_t
-__domain_op__donate_gpa(
+__domain_op__donate_page(
     domainid_t domainid, uint64_t gpa, uint64_t domain_gpa, uint64_t type)
 {
-    __domain_op__donate_gpa_arg_t arg = {
+    __domain_op__donate_page_arg_t arg = {
         domainid, gpa, domain_gpa, type
     };
 
     status_t ret = _vmcall(
         __enum_domain_op,
-        __enum_domain_op__donate_gpa,
+        __enum_domain_op__donate_page,
         bfrcast(uint64_t, &arg),
         0
     );

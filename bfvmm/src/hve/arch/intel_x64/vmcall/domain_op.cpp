@@ -50,12 +50,12 @@ vmcall_domain_op_handler::domain_op__create_domain(
 }
 
 void
-vmcall_domain_op_handler::domain_op__donate_gpa(
+vmcall_domain_op_handler::domain_op__donate_page(
     gsl::not_null<vcpu *> vcpu)
 {
     try {
         auto args =
-            vcpu->map_arg<__domain_op__donate_gpa_arg_t>(vcpu->rcx());
+            vcpu->map_arg<__domain_op__donate_page_arg_t>(vcpu->rcx());
 
         auto [hpa, unused] =
             vcpu->gpa_to_hpa(args->gpa);
@@ -135,8 +135,8 @@ vmcall_domain_op_handler::dispatch(
             this->domain_op__create_domain(vcpu);
             return true;
 
-        case __enum_domain_op__donate_gpa:
-            this->domain_op__donate_gpa(vcpu);
+        case __enum_domain_op__donate_page:
+            this->domain_op__donate_page(vcpu);
             return true;
 
         case __enum_domain_op__add_e820_entry:

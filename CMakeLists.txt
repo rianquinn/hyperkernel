@@ -32,7 +32,7 @@ include(${HK_SOURCE_CMAKE_DIR}/targets.cmake)
 # VMs
 # ------------------------------------------------------------------------------
 
-if(HK_BUILD_GUEST)
+if(HK_BUILD_GUEST AND NOT WIN32 AND NOT CYGWIN)
     include(${HK_SOURCE_ERB_DIR}/CMakeLists.txt)
 endif()
 

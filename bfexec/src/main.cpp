@@ -95,6 +95,17 @@ create_elf_vm(const args_type &args)
     return EXIT_SUCCESS;
 }
 
+//     ret = __vcpu_op__set_rbx(vm->vcpuid, 0x4000);
+//     if (ret != SUCCESS) {
+//         BFALERT("__vcpu_op__set_rbx failed\n");
+//         return FAILURE;
+//     }
+
+
+
+
+
+
 static int
 protected_main(const args_type &args)
 {

@@ -25,13 +25,11 @@
 #include <bfelf_loader.h>
 #include <bfbuilderinterface.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "xen/start_info.h"
 
 #define HYPERVISOR_NOT_LOADED bfscast(status_t, 0x8000000000000001)
 #define CREATE_FROM_ELF_FAILED bfscast(status_t, 0x8000000000000002)
-#define DESTROY_FAILED bfscast(status_t, 0x8000000000000002)
+#define DESTROY_FAILED bfscast(status_t, 0x8000000000000003)
 
 struct vm_t {
     struct crt_info_t crt_info;
@@ -42,6 +40,8 @@ struct vm_t {
     uint64_t domainid;
 
     int used;
+
+    struct hvm_start_info *start_info;
 };
 
 /**
@@ -70,9 +70,5 @@ common_create_from_elf(struct vm_t *vm, struct create_from_elf_args *args);
  */
 int64_t
 common_destroy(struct vm_t *vm);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif
