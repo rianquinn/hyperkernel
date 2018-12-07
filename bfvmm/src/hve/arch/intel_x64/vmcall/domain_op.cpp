@@ -50,35 +50,32 @@ vmcall_domain_op_handler::domain_op__create_domain(
 }
 
 void
-vmcall_domain_op_handler::domain_op__map_gpa(
+vmcall_domain_op_handler::domain_op__donate_gpa(
     gsl::not_null<vcpu *> vcpu)
 {
-        auto domain_op__map_gpa_arg =
-            vcpu->map_arg<__domain_op__map_gpa_arg_t>(vcpu->rcx());
-
     try {
-        //auto domain_op__map_gpa_arg =
-        //    vcpu->map_arg<__domain_op__map_gpa_arg_t>(vcpu->rcx());
+        auto args =
+            vcpu->map_arg<__domain_op__donate_gpa_arg_t>(vcpu->rcx());
 
         auto [hpa, unused] =
-            vcpu->gva_to_hpa(domain_op__map_gpa_arg->gva);
+            vcpu->gpa_to_hpa(args->gpa);
 
-        switch(domain_op__map_gpa_arg->type) {
+        switch(args->type) {
             case MAP_RO:
-                get_domain(domain_op__map_gpa_arg->domainid)->map_4k_ro(
-                    domain_op__map_gpa_arg->gpa, hpa
+                get_domain(args->domainid)->map_4k_ro(
+                    args->domain_gpa, hpa
                 );
                 break;
 
             case MAP_RW:
-                get_domain(domain_op__map_gpa_arg->domainid)->map_4k_rw(
-                    domain_op__map_gpa_arg->gpa, hpa
+                get_domain(args->domainid)->map_4k_rw(
+                    args->domain_gpa, hpa
                 );
                 break;
 
             case MAP_RWE:
-                get_domain(domain_op__map_gpa_arg->domainid)->map_4k_rwe(
-                    domain_op__map_gpa_arg->gpa, hpa
+                get_domain(args->domainid)->map_4k_rwe(
+                    args->domain_gpa, hpa
                 );
                 break;
 
@@ -89,9 +86,6 @@ vmcall_domain_op_handler::domain_op__map_gpa(
         vcpu->set_rax(SUCCESS);
     }
     catchall({
-        bfdebug_nhex(0, "map_gpa: gva", domain_op__map_gpa_arg->gva);
-        bfdebug_nhex(0, "map_gpa: gpa", domain_op__map_gpa_arg->gpa);
-
         vcpu->set_rax(FAILURE);
     })
 }
@@ -101,13 +95,11 @@ vmcall_domain_op_handler::domain_op__add_e820_entry(
     gsl::not_null<vcpu *> vcpu)
 {
     try {
-        auto domain_op__add_e820_entry_arg =
+        auto args =
             vcpu->map_arg<__domain_op__add_e820_entry_arg_t>(vcpu->rcx());
 
-        get_domain(domain_op__add_e820_entry_arg->domainid)->add_e820_entry({
-            domain_op__add_e820_entry_arg->addr,
-            domain_op__add_e820_entry_arg->size,
-            domain_op__add_e820_entry_arg->type
+        get_domain(args->domainid)->add_e820_entry({
+            args->addr, args->size, args->type
         });
 
         vcpu->set_rax(SUCCESS);
@@ -143,8 +135,8 @@ vmcall_domain_op_handler::dispatch(
             this->domain_op__create_domain(vcpu);
             return true;
 
-        case __enum_domain_op__map_gpa:
-            this->domain_op__map_gpa(vcpu);
+        case __enum_domain_op__donate_gpa:
+            this->domain_op__donate_gpa(vcpu);
             return true;
 
         case __enum_domain_op__add_e820_entry:

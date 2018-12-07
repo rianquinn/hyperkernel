@@ -23,59 +23,43 @@
 
 #include <common.h>
 
-// /* -------------------------------------------------------------------------- */
-// /* Domain Functions                                                           */
-// /* -------------------------------------------------------------------------- */
-
-// status_t
-// domain_op__map_gpa(uint64_t gva, uint64_t gpa, uint64_t type)
-// {
-//     status_t ret;
-
-//     ret = __domain_op__map_gpa(vm->domainid, gva, gpa, type);
-//     if (ret != SUCCESS) {
-//         BFALERT("__domain_op__map_gpa failed\n");
-//         return FAILURE;
-//     }
-
-//     return SUCCESS;
-// }
-
-// status_t
-// domain_op__map_gpa_single_gva(
-//     uint64_t gva, uint64_t gpa, uint64_t size, uint64_t type)
-// {
-//     uint64_t index;
-
-//     for (index = 0; index < size; index += 0x1000) {
-//         status_t ret = domain_op__map_gpa(
-//             gva, gpa + index, type
-//         );
-
-//         if (ret != SUCCESS) {
-//             BFALERT("map_mem failed\n");
-//             return FAILURE;
-//         }
-//     }
-
-//     return SUCCESS;
-// }
-
+/* -------------------------------------------------------------------------- */
+/* Donate Functions                                                           */
+/* -------------------------------------------------------------------------- */
 
 status_t
-domain_op__map_buffer(
-    uint64_t gva, uint64_t gpa, uint64_t size, uint64_t type)
+donate_buffer(
+    domainid_t domainid, uint64_t gva, uint64_t domain_gpa, uint64_t size, uint64_t type)
 {
-    uint64_t index;
+    uint64_t i;
 
-    for (index = 0; index < size; index += 0x1000) {
-        status_t ret =
-            domain_op__map_gpa(
-                platform_virt_to_phys(gva + index), gpa + index, type
-            );
+    for (i = 0; i < size; i += 0x1000) {
+        status_t ret = 0;
+        uint64_t gpa = (uint64_t)platform_virt_to_phys((void *)(gva + i));
 
+        ret = __domain_op__donate_gpa(domainid, gpa, domain_gpa + i, type);
         if (ret != SUCCESS) {
-            BFALERT("map_mem failed\n");
+            BFALERT("donate_buffer: __domain_op__donate_gpa failed\n");
+            return FAILURE;
+        }
+    }
+
+    return SUCCESS;
+}
+
+status_t
+donate_single_gpa_to_buffer(
+    domainid_t domainid, uint64_t gva, uint64_t domain_gpa, uint64_t size)
+{
+    uint64_t i;
+    uint64_t gpa = (uint64_t)platform_virt_to_phys((void *)gva);
+
+    for (i = 0; i < size; i += 0x1000) {
+        status_t ret = 0;
+
+        ret = __domain_op__donate_gpa(domainid, gpa, domain_gpa + i, MAP_RO);
+        if (ret != SUCCESS) {
+            BFALERT("donate_single_gpa_to_buffer: __domain_op__donate_gpa failed\n");
             return FAILURE;
         }
     }
@@ -423,20 +407,6 @@ domain_op__map_buffer(
 // }
 
 /* -------------------------------------------------------------------------- */
-/* ELF Loader                                                                 */
-/* -------------------------------------------------------------------------- */
-
-status_t
-binary_load(struct vm_t *vm)
-{
-    status_t ret;
-    struct bfelf_binary_t *b = &vm->bfelf_binary;
-
-
-    return SUCCESS;
-}
-
-/* -------------------------------------------------------------------------- */
 /* Implementation                                                             */
 /* -------------------------------------------------------------------------- */
 
@@ -444,6 +414,9 @@ int64_t
 common_create_from_elf(
     struct vm_t *vm, struct create_from_elf_args *args)
 {
+    status_t ret;
+    uint64_t gva, gpa;
+
     if (_cpuid_eax(0xBF00) != 0xBF01) {
         return HYPERVISOR_NOT_LOADED;
     }
@@ -460,16 +433,18 @@ common_create_from_elf(
     vm->bfelf_binary.exec_size = args->size;
     vm->bfelf_binary.start_addr = START_ADDR;
 
-    ret = bfelf_load(b, 1, &vm->entry, &vm->crt_info, &vm->bfelf_loader);
+    ret = bfelf_load(
+        &vm->bfelf_binary, 1, &vm->entry, &vm->crt_info, &vm->bfelf_loader);
     if (ret != BF_SUCCESS) {
-        BFALERT("bfelf_load: 0x%016" PRIx64 "\n", ret);
-        return FAILURE;
+        return ret;
     }
 
-    ret = domain_op__map_buffer(b->exec, b->start_addr, b->exec_size, MAP_RWE);
+    gva = (uint64_t)vm->bfelf_binary.exec;
+    gpa = (uint64_t)START_ADDR;
+
+    ret = donate_buffer(vm->domainid, gva, gpa, args->size, MAP_RWE);
     if (ret != SUCCESS) {
-        BFALERT("bfelf_load: 0x%016" PRIx64 "\n", ret);
-        return FAILURE;
+        return ret;
     }
 
     args->domainid = vm->domainid;
