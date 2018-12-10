@@ -23,10 +23,10 @@
 
 #include "../base.h"
 
-#include "public/xen.h"
-#include "public/vcpu.h"
-#include "public/grant_table.h"
-#include "public/arch-x86/cpuid.h"
+#include <xen/public/xen.h>
+#include <xen/public/vcpu.h>
+#include <xen/public/grant_table.h>
+#include <xen/public/arch-x86/cpuid.h>
 
 #include "evtchn_op.h"
 #include "gnttab_op.h"

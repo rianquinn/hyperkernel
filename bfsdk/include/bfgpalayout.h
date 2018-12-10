@@ -38,7 +38,7 @@
  * a Linux guest when it boots.
  *
  *           0x0 +----------------------+ ---
- *               | RAM                  |  | RAM
+ *               | RAM                  |  | RAM (BIOS RAM)
  *       0xE8000 +----------------------+ ---
  *               | Initial GDT          |  | Reserved
  *       0xE9000 +----------------------+  |
@@ -50,7 +50,7 @@
  *       0xEC000 +----------------------+  |
  *               | Xen CMD Line         |  |
  *       0xED000 +----------------------+  |
- *               | Xen shared Info Page |  |
+ *               | Xen Console Page     |  |
  *       0xEE000 +----------------------+  |
  *               | Free                 |  |
  *       0xEF000 +----------------------+  |
@@ -109,6 +109,10 @@ add_e820_entry(void *vm, uint64_t saddr, uint64_t eaddr, uint32_t type);
  * when mapping memory, and it is also provided to the guest VM if it asks for
  * it using the Xen PV interface.
  *
+ * @expects size < 0xFDC00000. Right now we do not support more than 4gb of
+ *     RAM, so this is the typical limitation for a < 4GB VM as you must remove
+ *     BIOS and hardware addresses spaces from your 4GB limit
+ *
  * @param vm a pointer to a VM object that is needed by add_e820_entry
  * @param size the amound of RAM given to the VM. Note that this amount does
  *     not include the RAM in the initial BIOS region that is also given to
@@ -120,7 +124,7 @@ setup_e820_map(void *vm, uint64_t size)
 {
     status_t ret;
 
-    if (0x001000000 + size > 0x00000000FEC00000) {
+    if (size >= 0xFDC00000) {
         BFALERT("setup_e820_map: unsupported amount of RAM\n");
         return FAILURE;
     }
@@ -141,13 +145,22 @@ setup_e820_map(void *vm, uint64_t size)
     return SUCCESS;
 }
 
+#define BIOS_RAM_ADDR       0x0
+#define BIOS_RAM_SIZE       0xE8000
+
+#define RESERVED1_ADRR      0xEE000
+#define RESERVED1_SIZE      0x02000
+
+#define RESERVED2_ADRR      0xF5000
+#define RESERVED2_SIZE      0x0B000
+
 #define INITIAL_GDT_GPA     0xE8000
 #define INITIAL_IDT_GPA     0xE9000
 #define INITIAL_TSS_GPA     0xEA000
 
 #define XEN_START_INFO_PAGE_GPA     0xEB000
 #define XEN_COMMAND_LINE_PAGE_GPA   0xEC000
-#define XEN_SHARED_INFO_PAGE_GPA    0xED000
+#define XEN_CONSOLE_PAGE_GPA        0xED000
 
 #define ACPI_RSDP_GPA       0xF0000
 #define ACPI_XSDT_GPA       0xF1000
@@ -158,6 +171,6 @@ setup_e820_map(void *vm, uint64_t size)
 #define LAPIC_GPA           0xFEE00000
 #define IOAPIC_GPA          0xFEC00000
 
-#define START_ADDR          ((void *)0x0000000001000000)
+#define START_ADDR          0x1000000
 
 #endif

@@ -64,9 +64,9 @@ domain::setup_domU()
     m_idt_phys = g_mm->virtint_to_physint(m_idt.base());
     m_tss_phys = g_mm->virtptr_to_physint(m_tss.get());
 
-    m_gdt_virt = 0x1000;
-    m_idt_virt = 0x2000;
-    m_tss_virt = 0x3000;
+    m_gdt_virt = INITIAL_GDT_GPA;
+    m_idt_virt = INITIAL_IDT_GPA;
+    m_tss_virt = INITIAL_TSS_GPA;
 
     m_gdt.set(2, nullptr, 0xFFFFFFFF, 0xc09b);
     m_gdt.set(3, nullptr, 0xFFFFFFFF, 0xc093);

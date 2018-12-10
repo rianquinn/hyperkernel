@@ -20,9 +20,10 @@
 #define GNTTABOP_INTEL_X64_HYPERKERNEL_H
 
 #include "../base.h"
-#include "public/grant_table.h"
-#include "public/memory.h"
 #include "xen_op.h"
+
+#include <xen/public/grant_table.h>
+#include <xen/public/memory.h>
 
 #include <eapis/hve/arch/x64/unmapper.h>
 #include <bfmath.h>

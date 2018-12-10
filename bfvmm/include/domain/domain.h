@@ -21,6 +21,7 @@
 
 #include <bftypes.h>
 #include <bfobject.h>
+#include <bfhypercall.h>
 
 // -----------------------------------------------------------------------------
 // Exports
@@ -51,7 +52,7 @@ class EXPORT_HYPERKERNEL_DOMAIN domain : public bfobject
 {
 public:
 
-    using domainid_type = uint64_t;
+    using domainid_type = domainid_t;
 
 public:
 
@@ -120,20 +121,49 @@ public:
 
     /// Generate Domain ID
     ///
+    /// Note:
+    ///
+    /// Xen has a max ID of 0x7FEF, which means that we would have
+    /// a similar upper limit. For now this is not an issue, but if we
+    /// get to a point where we support a large number of really small
+    /// VMs, we could hit this limit and will need to address this.
+    ///
     /// @expects
     /// @ensures
     ///
     /// @return Returns a new, unique domain id
     ///
-    static domainid_type generate_domainid()
+    static domainid_type generate_domainid() noexcept
     {
         static domainid_type s_id = 1;
         return s_id++;
     }
 
+    /// Set Entry
+    ///
+    /// Sets the entry point (GPA) of the VM. This can be usd by a vCPU
+    /// to set it's entry point.
+    ///
+    /// @expects
+    /// @ensures
+    ///
+    /// @param gpa the guest physical address of the VM's entry point
+    ///
+    void set_entry(uintptr_t gpa) noexcept;
+
+    /// Get Entry
+    ///
+    /// @expects
+    /// @ensures
+    ///
+    /// @return returns the VM's entry point
+    ///
+    uintptr_t entry() const noexcept;
+
 private:
 
     domainid_type m_id;
+    uintptr_t m_entry;
 
 public:
 
@@ -152,7 +182,8 @@ public:
 // Constants
 // -----------------------------------------------------------------------------
 
-constexpr domain::domainid_type invalid_domainid = 0xFFFFFFFFFFFFFFFF;
+constexpr domain::domainid_type invalid_domainid = INVALID_DOMAINID;
+constexpr domain::domainid_type self = SELF;
 
 }
 

@@ -50,32 +50,55 @@ vmcall_domain_op_handler::domain_op__create_domain(
 }
 
 void
-vmcall_domain_op_handler::domain_op__donate_page(
+vmcall_domain_op_handler::domain_op__destroy_domain(
+    gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        if (vcpu->rcx() == self) {
+            throw std::runtime_error(
+                "domain_op__destroy_domain: self not supported");
+        }
+
+        g_dm->destroy(vcpu->rcx(), nullptr);
+        vcpu->set_rax(SUCCESS);
+    }
+    catchall({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
+void
+vmcall_domain_op_handler::domain_op__share_page(
     gsl::not_null<vcpu *> vcpu)
 {
     try {
         auto args =
-            vcpu->map_arg<__domain_op__donate_page_arg_t>(vcpu->rcx());
+            vcpu->map_arg<__domain_op__share_page_arg_t>(vcpu->rcx());
+
+        if (args->foreign_domainid == self) {
+            throw std::runtime_error(
+                "domain_op__share_page: self not supported");
+        }
 
         auto [hpa, unused] =
-            vcpu->gpa_to_hpa(args->gpa);
+            vcpu->gpa_to_hpa(args->self_gpa);
 
         switch(args->type) {
             case MAP_RO:
-                get_domain(args->domainid)->map_4k_ro(
-                    args->domain_gpa, hpa
+                get_domain(args->foreign_domainid)->map_4k_ro(
+                    args->foreign_gpa, hpa
                 );
                 break;
 
             case MAP_RW:
-                get_domain(args->domainid)->map_4k_rw(
-                    args->domain_gpa, hpa
+                get_domain(args->foreign_domainid)->map_4k_rw(
+                    args->foreign_gpa, hpa
                 );
                 break;
 
             case MAP_RWE:
-                get_domain(args->domainid)->map_4k_rwe(
-                    args->domain_gpa, hpa
+                get_domain(args->foreign_domainid)->map_4k_rwe(
+                    args->foreign_gpa, hpa
                 );
                 break;
 
@@ -110,11 +133,16 @@ vmcall_domain_op_handler::domain_op__add_e820_entry(
 }
 
 void
-vmcall_domain_op_handler::domain_op__destroy_domain(
+vmcall_domain_op_handler::domain_op__set_entry(
     gsl::not_null<vcpu *> vcpu)
 {
     try {
-        g_dm->destroy(vcpu->rcx(), nullptr);
+        if (vcpu->rcx() == self) {
+            throw std::runtime_error(
+                "domain_op__set_entry: self not supported");
+        }
+
+        get_domain(vcpu->rcx())->set_entry(vcpu->rdx());
         vcpu->set_rax(SUCCESS);
     }
     catchall({
@@ -135,16 +163,20 @@ vmcall_domain_op_handler::dispatch(
             this->domain_op__create_domain(vcpu);
             return true;
 
-        case __enum_domain_op__donate_page:
-            this->domain_op__donate_page(vcpu);
+        case __enum_domain_op__destroy_domain:
+            this->domain_op__destroy_domain(vcpu);
+            return true;
+
+        case __enum_domain_op__share_page:
+            this->domain_op__share_page(vcpu);
             return true;
 
         case __enum_domain_op__add_e820_entry:
             this->domain_op__add_e820_entry(vcpu);
             return true;
 
-        case __enum_domain_op__destroy_domain:
-            this->domain_op__destroy_domain(vcpu);
+        case __enum_domain_op__set_entry:
+            this->domain_op__set_entry(vcpu);
             return true;
 
         default:

@@ -24,6 +24,8 @@
 
 #include <list>
 #include <memory>
+#include <chrono>
+#include <thread>
 #include <fstream>
 #include <iostream>
 
@@ -31,20 +33,74 @@
 #include <cmdl.h>
 #include <file.h>
 #include <ioctl.h>
+#include <verbose.h>
 
-#include <hve/arch/intel_x64/xen/public/xen.h>
-#include <hve/arch/intel_x64/xen/public/elfnote.h>
+vcpuid_t g_vcpuid;
+domainid_t g_domainid;
 
 auto ctl = std::make_unique<ioctl>();
+
+void
+vcpu_thread(vcpuid_t vcpuid)
+{
+    using namespace std::chrono;
+
+    // while(true) {
+bfline
+        auto ret = __run_op(vcpuid, 0, 0);
+bfline
+        switch(run_op_ret(ret)) {
+            case __enum_run_op__hlt:
+bfline
+                return;
+
+            case __enum_run_op__fault:
+                std::cerr << "[" << vcpuid << "] ";
+                std::cerr << "vcpu fault: " << run_op_arg(ret) << '\n';
+                return;
+
+            case __enum_run_op__resume_after_interrupt:
+                return;
+
+            case __enum_run_op__yield:
+                std::this_thread::sleep_for(microseconds(run_op_arg(ret)));
+                return;
+
+            default:
+                std::cerr << "[" << vcpuid << "] ";
+                std::cerr << "unknown vcpu ret: " << run_op_ret(ret) << '\n';
+                return;
+        }
+    // }
+
+bfline
+}
 
 static int
 attach_to_vm(const args_type &args)
 {
     bfignored(args);
-    throw std::runtime_error("not supported yet!!!");
+
+    auto ___ = gsl::finally([&]{
+        if (__vcpu_op__destroy_vcpu(g_vcpuid) != SUCCESS) {
+            std::cerr << "__vcpu_op__destroy_vcpu failed\n";
+        }
+    });
+
+    g_vcpuid = __vcpu_op__create_vcpu(g_domainid);
+    if (g_vcpuid == INVALID_VCPUID) {
+        throw std::runtime_error("__vcpu_op__create_vcpu failed");
+    }
+
+    attach_to_vm_verbose();
+
+    std::thread t(vcpu_thread, g_vcpuid);
+    t.join();
+
+    return EXIT_SUCCESS;
 }
 
-static int
+static void
 create_elf_vm(const args_type &args)
 {
     struct create_from_elf_args ioctl_args{};
@@ -80,45 +136,29 @@ create_elf_vm(const args_type &args)
     ioctl_args.uart = uart;
     ioctl_args.size = size;
 
-    if (verbose) {
-        std::cout << bfcolor_magenta "-------------------------\n" bfcolor_end;
-        std::cout << bfcolor_blue    "Creating VM from ELF file\n" bfcolor_end;
-        std::cout << bfcolor_magenta "-------------------------\n" bfcolor_end;
-        std::cout << "path: " << bfcolor_green << file.path() << bfcolor_end "\n";
-        std::cout << "size: " << bfcolor_green << size << bfcolor_end "\n";
-        std::cout << "cmdl: " << bfcolor_green << cmdl.data() << bfcolor_end "\n";
-    }
-
     ctl->call_ioctl_create_from_elf(ioctl_args);
-    ctl->call_ioctl_destroy(ioctl_args.domainid);
+    create_elf_vm_verbose();
 
-    return EXIT_SUCCESS;
+    g_domainid = ioctl_args.domainid;
 }
-
-//     ret = __vcpu_op__set_rbx(vm->vcpuid, 0x4000);
-//     if (ret != SUCCESS) {
-//         BFALERT("__vcpu_op__set_rbx failed\n");
-//         return FAILURE;
-//     }
-
-
-
-
-
 
 static int
 protected_main(const args_type &args)
 {
-    if (args.count("attach")) {
-        return attach_to_vm(args);
-    }
-
     if (args.count("elf")) {
-        return create_elf_vm(args);
+        create_elf_vm(args);
+    }
+    else {
+        g_domainid = args["attach"].as<domainid_t>();
     }
 
-    throw cxxopts::OptionException(
-        "must specify --elf or --attach");
+    auto ___ = gsl::finally([&]{
+        if (args.count("elf")) {
+            ctl->call_ioctl_destroy(g_domainid);
+        }
+    });
+
+    return attach_to_vm(args);
 }
 
 int

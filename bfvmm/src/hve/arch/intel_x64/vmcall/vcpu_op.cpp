@@ -47,65 +47,43 @@ vmcall_vcpu_op_handler::vcpu_op__create_vcpu(
     })
 }
 
-void
-vmcall_vcpu_op_handler::vcpu_op__run_vcpu(
-    gsl::not_null<vcpu *> vcpu)
-{
-    try {
-        if (m_child_vcpu == nullptr || m_child_vcpu->id() != vcpu->rcx()) {
-            m_child_vcpu = get_vcpu(vcpu->rcx());
-        }
+// void
+// vmcall_vcpu_op_handler::vcpu_op__run_vcpu(
+//     gsl::not_null<vcpu *> vcpu)
+// {
+//     try {
+//         if (m_child_vcpu == nullptr || m_child_vcpu->id() != vcpu->rcx()) {
+//             m_child_vcpu = get_vcpu(vcpu->rcx());
+//         }
 
-        m_child_vcpu->set_parent_vcpu(vcpu);
+//         m_child_vcpu->set_parent_vcpu(vcpu);
 
-        if (m_child_vcpu->is_alive()) {
-            m_child_vcpu->load();
-            m_child_vcpu->run(&world_switch);
-        }
+//         if (m_child_vcpu->is_alive()) {
+//             m_child_vcpu->load();
+//             m_child_vcpu->run(&world_switch);
+//         }
 
-        vcpu->set_rax(SUCCESS);
-    }
-    catchall({
-        vcpu->set_rax(FAILURE);
-    })
-}
-
-void
-vmcall_vcpu_op_handler::vcpu_op__set_rip(
-    gsl::not_null<vcpu *> vcpu)
-{
-    try {
-        auto child_vcpu = get_vcpu(vcpu->rcx());
-        child_vcpu->set_rip(vcpu->rdx());
-
-        vcpu->set_rax(SUCCESS);
-    }
-    catchall({
-        vcpu->set_rax(FAILURE);
-    })
-}
+//         vcpu->set_rax(SUCCESS);
+//     }
+//     catchall({
+//         vcpu->set_rax(FAILURE);
+//     })
+// }
 
 void
-vmcall_vcpu_op_handler::vcpu_op__set_rbx(
+vmcall_vcpu_op_handler::vcpu_op__kill_vcpu(
     gsl::not_null<vcpu *> vcpu)
 {
-    try {
-        auto child_vcpu = get_vcpu(vcpu->rcx());
-        child_vcpu->set_rbx(vcpu->rdx());
+    // TODO:
+    //
+    // We need to store a list of vCPUs in the domain so that we can verify
+    // that the provided domain matches. We should also check to make sure
+    // that the domain creating the vCPU is the same domain killing the
+    // vCPU.
+    //
 
-        vcpu->set_rax(SUCCESS);
-    }
-    catchall({
-        vcpu->set_rax(FAILURE);
-    })
-}
-
-void
-vmcall_vcpu_op_handler::vcpu_op__hlt_vcpu(
-    gsl::not_null<vcpu *> vcpu)
-{
     try {
-        auto child_vcpu = get_vcpu(vcpu->rcx());
+        auto child_vcpu = get_vcpu(vcpu->rdx());
         child_vcpu->kill();
 
         vcpu->set_rax(SUCCESS);
@@ -119,8 +97,16 @@ void
 vmcall_vcpu_op_handler::vcpu_op__destroy_vcpu(
     gsl::not_null<vcpu *> vcpu)
 {
+    // TODO:
+    //
+    // We need to store a list of vCPUs in the domain so that we can verify
+    // that the provided domain matches. We should also check to make sure
+    // that the domain creating the vCPU is the same domain deleting the
+    // vCPU.
+    //
+
     try {
-        g_vcm->destroy(vcpu->rcx(), nullptr);
+        g_vcm->destroy(vcpu->rdx(), nullptr);
         vcpu->set_rax(SUCCESS);
     }
     catchall({
@@ -141,20 +127,12 @@ vmcall_vcpu_op_handler::dispatch(
             this->vcpu_op__create_vcpu(vcpu);
             return true;
 
-        case __enum_vcpu_op__run_vcpu:
-            this->vcpu_op__run_vcpu(vcpu);
-            return true;
+        // case __enum_vcpu_op__run_vcpu:
+        //     this->vcpu_op__run_vcpu(vcpu);
+        //     return true;
 
-        case __enum_vcpu_op__set_rip:
-            this->vcpu_op__set_rip(vcpu);
-            return true;
-
-        case __enum_vcpu_op__set_rbx:
-            this->vcpu_op__set_rbx(vcpu);
-            return true;
-
-        case __enum_vcpu_op__hlt_vcpu:
-            this->vcpu_op__hlt_vcpu(vcpu);
+        case __enum_vcpu_op__kill_vcpu:
+            this->vcpu_op__kill_vcpu(vcpu);
             return true;
 
         case __enum_vcpu_op__destroy_vcpu:

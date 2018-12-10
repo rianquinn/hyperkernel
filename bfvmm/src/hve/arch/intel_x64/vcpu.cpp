@@ -18,6 +18,7 @@
 
 #include <intrinsics.h>
 
+#include <bfgpalayout.h>
 #include <hve/arch/intel_x64/lapic.h>
 #include <hve/arch/intel_x64/ioapic.h>
 #include <hve/arch/intel_x64/vcpu.h>
@@ -102,8 +103,8 @@ vcpu::vcpu(
     m_vmcall_handler{this},
 
     m_vmcall_domain_op_handler{this},
+    m_vmcall_run_op_handler{this},
     m_vmcall_vcpu_op_handler{this},
-    m_vmcall_bf86_op_handler{this},
 
     m_xen_op_handler{this}
 {
@@ -145,6 +146,9 @@ vcpu::write_domU_guest_state(domain *domain)
 
     using namespace ::x64::access_rights;
     using namespace ::x64::segment_register;
+
+    this->set_rip(domain->entry());
+    this->set_rbx(XEN_START_INFO_PAGE_GPA);
 
     uint64_t cr0 = guest_cr0::get();
     cr0 |= cr0::protection_enable::mask;
@@ -290,30 +294,30 @@ vcpu::parent_vcpu() const
 { return m_parent_vcpu; }
 
 void
-vcpu::return_success()
+vcpu::return_hlt()
 {
-    this->set_rax(SUCCESS);
+    this->set_rax(__enum_run_op__hlt);
     this->run(&world_switch);
 }
 
 void
-vcpu::return_failure()
+vcpu::return_fault(uint64_t error)
 {
-    this->set_rax(FAILURE);
+    this->set_rax((error << 4) | __enum_run_op__hlt);
     this->run(&world_switch);
 }
 
 void
-vcpu::return_and_continue()
+vcpu::return_resume_after_interrupt()
 {
-    this->set_rax(VCPU_OP__RUN_CONTINUE);
+    this->set_rax(__enum_run_op__resume_after_interrupt);
     this->run(&world_switch);
 }
 
 void
-vcpu::return_and_sleep(uint64_t usec)
+vcpu::return_yield(uint64_t usec)
 {
-    this->set_rax((usec << 16U) | VCPU_OP__RUN_SLEEP);
+    this->set_rax((usec << 4) | __enum_run_op__yield);
     this->run(&world_switch);
 }
 

@@ -59,6 +59,10 @@ parse_args(int argc, char *argv[])
         throw std::runtime_error("cannot set both 'attach' and 'elf'");
     }
 
+    if (!args.count("attach") && !args.count("elf")) {
+        throw std::runtime_error("must specify 'elf' or 'attach'");
+    }
+
     return args;
 }
 

@@ -23,14 +23,14 @@
 #include <hve/arch/intel_x64/lapic.h>
 #include <eapis/hve/arch/intel_x64/time.h>
 
-#include <hve/arch/intel_x64/xen/public/xen.h>
-#include <hve/arch/intel_x64/xen/public/event_channel.h>
-#include <hve/arch/intel_x64/xen/public/memory.h>
-#include <hve/arch/intel_x64/xen/public/version.h>
-#include <hve/arch/intel_x64/xen/public/vcpu.h>
-#include <hve/arch/intel_x64/xen/public/hvm/hvm_op.h>
-#include <hve/arch/intel_x64/xen/public/hvm/params.h>
-#include <hve/arch/intel_x64/xen/public/arch-x86/cpuid.h>
+#include <xen/public/xen.h>
+#include <xen/public/event_channel.h>
+#include <xen/public/memory.h>
+#include <xen/public/version.h>
+#include <xen/public/vcpu.h>
+#include <xen/public/hvm/hvm_op.h>
+#include <xen/public/hvm/params.h>
+#include <xen/public/arch-x86/cpuid.h>
 
 #include <hve/arch/intel_x64/xen/xen_op.h>
 #include <hve/arch/intel_x64/xen/evtchn_op.h>
@@ -270,9 +270,7 @@ xen_op_handler::xen_op_handler(
 
 static inline bool
 vmware_guest(void)
-{
-    return ::x64::cpuid::ebx::get(0x40000000) == 0x61774d56;
-}
+{ return ::x64::cpuid::ebx::get(0x40000000) == 0x61774d56; }
 
 static uint64_t
 tsc_frequency(void)
@@ -362,7 +360,7 @@ xen_op_handler::handle_hlt(gsl::not_null<vcpu_t *> vcpu)
     m_vcpu->disable_vmx_preemption_timer();
     m_vcpu->queue_timer_interrupt();
     m_vcpu->parent_vcpu()->load();
-    m_vcpu->parent_vcpu()->return_and_sleep(usec);
+    m_vcpu->parent_vcpu()->return_yield(usec);
 
     // Unreachable
     return true;
@@ -1705,13 +1703,9 @@ xen_op_handler::HVMOP_get_param_handler(gsl::not_null<vcpu *> vcpu)
                 break;
 
             case HVM_PARAM_CONSOLE_PFN:
-                m_console = vcpu->map_gpa_4k<uint8_t>(CONSOLE_GPA);
-                arg->value = CONSOLE_GPA >> x64::pt::page_shift;
+                m_console = vcpu->map_gpa_4k<uint8_t>(XEN_CONSOLE_PAGE_GPA);
+                arg->value = XEN_CONSOLE_PAGE_GPA >> x64::pt::page_shift;
                 break;
-
-//            case HVM_PARAM_STORE_EVTCHN:
-//                arg->value = m_evtchn_op->bind_store();
-//                break;
 
             default:
                 bfdebug_info(0, "Unsupported HVM get_param:");

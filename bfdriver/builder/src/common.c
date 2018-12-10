@@ -20,10 +20,14 @@
 #include <common.h>
 
 #include <bfdebug.h>
+#include <bfconstants.h>
 #include <bfgpalayout.h>
 #include <bfhypercall.h>
 
-#define bfalloc_page(a) (a *)platform_memset(platform_alloc_rwe(0x1000), 0, 0x1000);
+#define bfalloc_page(a) \
+    (a *)platform_memset(platform_alloc_rwe(BAREFLANK_PAGE_SIZE), 0, BAREFLANK_PAGE_SIZE);
+#define bfalloc_buffer(a,b) \
+    (a *)platform_memset(platform_alloc_rwe(b), 0, b);
 
 /* -------------------------------------------------------------------------- */
 /* E820 Functions                                                             */
@@ -47,14 +51,14 @@ add_e820_entry(void *vm, uint64_t saddr, uint64_t eaddr, uint32_t type)
 /* Donate Functions                                                           */
 /* -------------------------------------------------------------------------- */
 
-status_t
+static status_t
 donate_page(
     struct vm_t *vm, void *gva, uint64_t domain_gpa, uint64_t type)
 {
     status_t ret;
     uint64_t gpa = (uint64_t)platform_virt_to_phys(gva);
 
-    ret = __domain_op__donate_page(vm->domainid, gpa, domain_gpa, type);
+    ret = __domain_op__share_page(vm->domainid, gpa, domain_gpa, type);
     if (ret != SUCCESS) {
         BFALERT("donate_page: __domain_op__donate_gpa failed\n");
     }
@@ -62,14 +66,14 @@ donate_page(
     return ret;
 }
 
-status_t
+static status_t
 donate_buffer(
     struct vm_t *vm, void *gva, uint64_t domain_gpa, uint64_t size, uint64_t type)
 {
     uint64_t i;
     status_t ret;
 
-    for (i = 0; i < size; i += 0x1000) {
+    for (i = 0; i < size; i += BAREFLANK_PAGE_SIZE) {
         ret = donate_page(vm, (char *)gva + i, domain_gpa + i, type);
         if (ret != SUCCESS) {
             return ret;
@@ -79,14 +83,14 @@ donate_buffer(
     return ret;
 }
 
-status_t
+static status_t
 donate_page_to_page_range(
     struct vm_t *vm, void *gva, uint64_t domain_gpa, uint64_t size, uint64_t type)
 {
     uint64_t i;
     status_t ret;
 
-    for (i = 0; i < size; i += 0x1000) {
+    for (i = 0; i < size; i += BAREFLANK_PAGE_SIZE) {
         ret = donate_page(vm, gva, domain_gpa + i, type);
         if (ret != SUCCESS) {
             return ret;
@@ -100,214 +104,213 @@ donate_page_to_page_range(
 /* GPA Functions                                                              */
 /* -------------------------------------------------------------------------- */
 
-status_t
+static status_t
 setup_xen_start_info(struct vm_t *vm)
 {
     status_t ret;
 
-    vm->start_info = bfalloc_page(struct hvm_start_info);
-    if (vm->start_info == 0) {
+    vm->xen_start_info = bfalloc_page(struct hvm_start_info);
+    if (vm->xen_start_info == 0) {
         BFALERT("setup_xen_start_info: failed to alloc start into page\n");
         return FAILURE;
     }
 
-    vm->start_info->magic = XEN_HVM_START_MAGIC_VALUE;
-    vm->start_info->version = 0;
-    vm->start_info->cmdline_paddr = XEN_COMMAND_LINE_PAGE_GPA;
-    vm->start_info->rsdp_paddr = ACPI_RSDP_GPA;
+    vm->xen_start_info->magic = XEN_HVM_START_MAGIC_VALUE;
+    vm->xen_start_info->version = 0;
+    vm->xen_start_info->cmdline_paddr = XEN_COMMAND_LINE_PAGE_GPA;
+    vm->xen_start_info->rsdp_paddr = ACPI_RSDP_GPA;
 
-    ret = donate_page(vm, vm->start_info, XEN_START_INFO_PAGE_GPA, MAP_RO);
+    ret = donate_page(vm, vm->xen_start_info, XEN_START_INFO_PAGE_GPA, MAP_RO);
     if (ret != BF_SUCCESS) {
-        BFALERT("setup_xen_start_info failed\n");
+        BFALERT("setup_xen_start_info: donate failed\n");
         return ret;
     }
 
     return ret;
 }
 
-// status_t
-// setup_xen_cmdline()
-// {
-//     status_t ret;
-//     const char *cmdline = "console=uart,io,0x3F8,115200n8 init=/hello";
+static status_t
+setup_xen_cmdline(struct vm_t *vm, struct create_from_elf_args *args)
+{
+    status_t ret;
 
-//     /**
-//      * TODO:
-//      * - We need to use a "--" similar to gdb to get the command line options
-//      * from the user so that they can be added here
-//      */
+    if (args->cmdl_size >= BAREFLANK_PAGE_SIZE) {
+        BFALERT("setup_xen_cmdline: cmdl must be smaller than a page\n");
+        return FAILURE;
+    }
 
-//     g_reserved_5000 = (reserved_5000_t *)alloc_page();
-//     if (g_reserved_5000 == 0) {
-//         BFALERT("g_reserved_5000 alloc failed: %s\n", strerror(errno));
-//         return FAILURE;
-//     }
+    vm->xen_cmdl = bfalloc_page(char);
+    if (vm->xen_cmdl == 0) {
+        BFALERT("setup_xen_cmdline: failed to alloc cmdl page\n");
+        return FAILURE;
+    }
 
-//     ret = domain_op__map_gpa((uint64_t)g_reserved_5000, 0x5000, MAP_RO);
-//     if (ret != BF_SUCCESS) {
-//         BFALERT("__domain_op__map_gpa failed\n");
-//         return FAILURE;
-//     }
+    platform_memcpy(vm->xen_cmdl, args->cmdl, args->cmdl_size);
 
-//     strncpy(g_reserved_5000->cmdline, cmdline, 0x1000);
-//     return SUCCESS;
-// }
+    ret = donate_page(vm, vm->xen_cmdl, XEN_COMMAND_LINE_PAGE_GPA, MAP_RO);
+    if (ret != BF_SUCCESS) {
+        BFALERT("setup_xen_cmdline: donate failed\n");
+        return ret;
+    }
 
-// status_t
-// setup_xen_shared_info_page()
-// {
-//     status_t ret;
+    return SUCCESS;
+}
 
-//     g_reserved_6000 = (reserved_6000_t *)alloc_page();
-//     if (g_reserved_6000 == 0) {
-//         BFALERT("g_reserved_6000 alloc failed: %s\n", strerror(errno));
-//         return FAILURE;
-//     }
+static status_t
+setup_xen_console(struct vm_t *vm)
+{
+    status_t ret;
 
-//     memset((char *)g_reserved_6000, 0, 0x1000);
-//     ret = domain_op__map_gpa((uint64_t)g_reserved_6000, 0x6000, MAP_RW);
-//     if (ret != BF_SUCCESS) {
-//         BFALERT("__domain_op__map_gpa failed\n");
-//         return FAILURE;
-//     }
+    vm->xen_console = bfalloc_page(void);
+    if (vm->xen_console == 0) {
+        BFALERT("setup_xen_console: failed to alloc console page\n");
+        return FAILURE;
+    }
 
-//     return SUCCESS;
-// }
+    ret = donate_page(vm, vm->xen_console, XEN_CONSOLE_PAGE_GPA, MAP_RW);
+    if (ret != BF_SUCCESS) {
+        BFALERT("setup_xen_console: donate failed\n");
+        return ret;
+    }
 
-// status_t
-// setup_xen_console()
-// {
-//     status_t ret;
+    return ret;
+}
 
-//     g_reserved_7000 = (reserved_7000_t *)alloc_page();
-//     if (g_reserved_7000 == 0) {
-//         BFALERT("g_reserved_7000 alloc failed: %s\n", strerror(errno));
-//         return FAILURE;
-//     }
+static status_t
+setup_bios_ram(struct vm_t *vm)
+{
+    status_t ret;
 
-//     ret = domain_op__map_gpa((uint64_t)g_reserved_7000, 0x7000, MAP_RW);
-//     if (ret != BF_SUCCESS) {
-//         BFALERT("__domain_op__map_gpa failed\n");
-//         return FAILURE;
-//     }
+    vm->bios_ram = bfalloc_buffer(void, BIOS_RAM_SIZE);
+    if (vm->bios_ram == 0) {
+        BFALERT("setup_bios_ram: failed to alloc bios ram\n");
+        return FAILURE;
+    }
 
-//     return SUCCESS;
-// }
+    ret = donate_buffer(vm, vm->bios_ram, BIOS_RAM_ADDR, BIOS_RAM_SIZE, MAP_RWE);
+    if (ret != BF_SUCCESS) {
+        BFALERT("setup_bios_ram: donate failed\n");
+        return ret;
+    }
 
-// status_t
-// setup_xen_store()
-// {
-//     status_t ret;
+    return ret;
+}
 
-//     g_reserved_8000 = (reserved_8000_t *)alloc_page();
-//     if (g_reserved_8000 == 0) {
-//         BFALERT("g_reserved_8000 alloc failed: %s\n", strerror(errno));
-//         return FAILURE;
-//     }
+static status_t
+setup_reserved_free(struct vm_t *vm)
+{
+    status_t ret;
 
-//     ret = domain_op__map_gpa((uint64_t)g_reserved_8000, 0x8000, MAP_RW);
-//     if (ret != BF_SUCCESS) {
-//         BFALERT("__domain_op__map_gpa failed\n");
-//         return FAILURE;
-//     }
+    vm->zero_page = bfalloc_page(void);
+    if (vm->zero_page == 0) {
+        BFALERT("setup_reserved_free: failed to alloc zero page\n");
+        return FAILURE;
+    }
 
-//     return SUCCESS;
-// }
+    ret = donate_page_to_page_range(
+        vm, vm->zero_page, RESERVED1_ADRR, RESERVED1_SIZE, MAP_RO);
+    if (ret != BF_SUCCESS) {
+        BFALERT("setup_reserved_free: donate failed\n");
+        return ret;
+    }
 
-// status_t
-// setup_rm_trampoline()
-// {
-//     status_t ret;
-//     uint32_t size = REAL_MODE_SIZE;
+    ret = donate_page_to_page_range(
+        vm, vm->zero_page, RESERVED2_ADRR, RESERVED2_ADRR, MAP_RO);
+    if (ret != BF_SUCCESS) {
+        BFALERT("setup_reserved_free: donate failed\n");
+        return ret;
+    }
 
-//     g_reserved_A000 = (reserved_A000_t *)alloc_buffer(size);
-//     if (g_reserved_A000 == 0) {
-//         BFALERT("g_reserved_A000 alloc failed: %s\n", strerror(errno));
-//         return FAILURE;
-//     }
+    return ret;
+}
 
-//     ret = domain_op__map_buffer((uint64_t)g_reserved_A000, 0xA000, size, MAP_RWE);
-//     if (ret != BF_SUCCESS) {
-//         BFALERT("__domain_op__map_buffer failed\n");
-//         return FAILURE;
-//     }
+static status_t
+setup_kernel(struct vm_t *vm, struct create_from_elf_args *args)
+{
+    status_t ret;
 
-//     return SUCCESS;
-// }
+    vm->bfelf_binary.file = args->file;
+    vm->bfelf_binary.file_size = args->file_size;
+    vm->bfelf_binary.exec = 0;
+    vm->bfelf_binary.exec_size = args->size;
+    vm->bfelf_binary.start_addr = (void *)START_ADDR;
 
-// status_t
-// setup_xen_disabled()
-// {
-//     status_t ret;
+    ret = bfelf_load(&vm->bfelf_binary, 1, 0, 0, &vm->bfelf_loader);
+    if (ret != BF_SUCCESS) {
+        return ret;
+    }
 
-//     /**
-//      * Note:
-//      *
-//      * The following disables specific portions of memory by mapping them to
-//      * a zero page. Specifically, the guest might attempt to access these
-//      * pages expecting to find something, which they will not. If we don't map
-//      * these, the guest will attempt to access them anyways and crash from an
-//      * EPT violation
-//      */
+    ret = donate_buffer(
+        vm, vm->bfelf_binary.exec, START_ADDR, args->size, MAP_RWE);
+    if (ret != SUCCESS) {
+        return ret;
+    }
 
-//     g_zero_page = alloc_page();
-//     if (g_zero_page == 0) {
-//         BFALERT("g_zero_page alloc failed: %s\n", strerror(errno));
-//         return FAILURE;
-//     }
+    return ret;
+}
 
-//     /* Zero Page */
-//     ret = domain_op__map_gpa_single_gva((uint64_t)g_zero_page, 0x0, 0x1000, MAP_RO);
-//     if (ret != BF_SUCCESS) {
-//         BFALERT("domain_op__map_gpa_single_gva failed\n");
-//         return FAILURE;
-//     }
+// TODO:
+//
+// We need to move the ACPI and Initial GDT/IDT/TSS to this driver and
+// out of the hypervisor as these should be resources managed by the
+// builder, not the hypervisor.
+//
 
-//     /* Disable DMI */
-//     ret = domain_op__map_gpa_single_gva((uint64_t)g_zero_page, 0xF0000, 0x10000, MAP_RO);
-//     if (ret != BF_SUCCESS) {
-//         BFALERT("domain_op__map_gpa_single_gva failed\n");
-//         return FAILURE;
-//     }
+/* -------------------------------------------------------------------------- */
+/* Initial Register State                                                     */
+/* -------------------------------------------------------------------------- */
 
-//     /* Disable Video BIOS region */
-//     ret = domain_op__map_gpa_single_gva((uint64_t)g_zero_page, 0xC0000, 0x10000, MAP_RO);
-//     if (ret != BF_SUCCESS) {
-//         BFALERT("domain_op__map_gpa_single_gva failed\n");
-//         return FAILURE;
-//     }
+static status_t
+get_phys32_entry(struct vm_t *vm, uint32_t *entry)
+{
+    uint64_t i;
+    const uint32_t *hay;
+    const struct bfelf_shdr *shdr;
 
-//     /* ROMs */
-//     ret = domain_op__map_gpa_single_gva((uint64_t)g_zero_page, 0xD0000, 0x10000, MAP_RO);
-//     if (ret != BF_SUCCESS) {
-//         BFALERT("domain_op__map_gpa_single_gva failed\n");
-//         return FAILURE;
-//     }
+    const uint32_t needle[5] = {
+        0x4U, 0x8U, 0x12U, 0x006e6558U, 0x0
+    };
 
-//     /* ROMs */
-//     ret = domain_op__map_gpa_single_gva((uint64_t)g_zero_page, 0xE4000, 0x10000 - 0x4000, MAP_RO);
-//     if (ret != BF_SUCCESS) {
-//         BFALERT("domain_op__map_gpa_single_gva failed\n");
-//         return FAILURE;
-//     }
+    shdr = vm->bfelf_binary.ef.notes;
+    if (!shdr) {
+        BFALERT("get_entry: no notes section\n");
+        return FAILURE;
+    }
 
-//     // TODO:
-//     //
-//     // To support MP, we will have to remove the following and provide an
-//     // actual MP table that mimics the ACPI tables as both are required.
-//     //
-//     // https://elixir.bootlin.com/linux/v3.7/source/arch/x86/kernel/mpparse.c#L604
-//     //
+    hay = (uint32_t *)(vm->bfelf_binary.file + shdr->sh_offset);
 
-//     /* MP Table */
-//     ret = domain_op__map_gpa_single_gva((uint64_t)g_zero_page, 0x9F000, 0x1000, MAP_RO);
-//     if (ret != BF_SUCCESS) {
-//         BFALERT("domain_op__map_gpa_single_gva failed\n");
-//         return FAILURE;
-//     }
+    for (i = 0; i < shdr->sh_size - sizeof(needle); i++) {
+        if (hay[i + 0] == needle[0] &&
+            hay[i + 1] == needle[1] &&
+            hay[i + 2] == needle[2] &&
+            hay[i + 3] == needle[3]
+        ) {
+            *entry = hay[i + 4];
+            return SUCCESS;
+        }
+    }
 
-//     return SUCCESS;
-// }
+    return FAILURE;
+}
+
+static status_t
+setup_entry(struct vm_t *vm)
+{
+    status_t ret;
+
+    ret = get_phys32_entry(vm, &vm->entry);
+    if (ret != SUCCESS) {
+        BFALERT("setup_entry: failed to locate pvh_start_xen\n");
+        return ret;
+    }
+
+    ret = __domain_op__set_entry(vm->domainid, vm->entry);
+    if (ret != SUCCESS) {
+        BFALERT("setup_entry: __domain_op__set_entry failed\n");
+    }
+
+    return ret;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Implementation                                                             */
@@ -334,31 +337,35 @@ common_create_from_elf(
         return ret;
     }
 
+    ret = setup_xen_cmdline(vm, args);
+    if (ret != SUCCESS) {
+        return ret;
+    }
 
+    ret = setup_xen_console(vm);
+    if (ret != SUCCESS) {
+        return ret;
+    }
 
+    ret = setup_bios_ram(vm);
+    if (ret != SUCCESS) {
+        return ret;
+    }
 
+    ret = setup_reserved_free(vm);
+    if (ret != SUCCESS) {
+        return ret;
+    }
 
+    ret = setup_kernel(vm, args);
+    if (ret != SUCCESS) {
+        return ret;
+    }
 
-
-    // vm->bfelf_binary.file = args->file;
-    // vm->bfelf_binary.file_size = args->file_size;
-    // vm->bfelf_binary.exec = 0;
-    // vm->bfelf_binary.exec_size = args->size;
-    // vm->bfelf_binary.start_addr = START_ADDR;
-
-    // ret = bfelf_load(
-    //     &vm->bfelf_binary, 1, &vm->entry, &vm->crt_info, &vm->bfelf_loader);
-    // if (ret != BF_SUCCESS) {
-    //     return ret;
-    // }
-
-    // gva = (uint64_t)vm->bfelf_binary.exec;
-    // gpa = (uint64_t)START_ADDR;
-
-    // ret = donate_buffer(vm->domainid, gva, gpa, args->size, MAP_RWE);
-    // if (ret != SUCCESS) {
-    //     return ret;
-    // }
+    ret = setup_entry(vm);
+    if (ret != SUCCESS) {
+        return ret;
+    }
 
     args->domainid = vm->domainid;
     return BF_SUCCESS;
@@ -378,6 +385,13 @@ common_destroy(struct vm_t *vm)
         BFALERT("__domain_op__destroy_domain failed\n");
         return FAILURE;
     }
+
+    platform_free_rw(vm->bfelf_binary.exec, vm->bfelf_binary.exec_size);
+    platform_free_rw(vm->xen_start_info, BAREFLANK_PAGE_SIZE);
+    platform_free_rw(vm->xen_cmdl, BAREFLANK_PAGE_SIZE);
+    platform_free_rw(vm->xen_console, BAREFLANK_PAGE_SIZE);
+    platform_free_rw(vm->bios_ram, 0xE8000);
+    platform_free_rw(vm->zero_page, BAREFLANK_PAGE_SIZE);
 
     return BF_SUCCESS;
 }

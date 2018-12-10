@@ -25,9 +25,7 @@
 
 int64_t
 platform_init(void)
-{
-    return BF_SUCCESS;
-}
+{ return BF_SUCCESS; }
 
 void *
 platform_alloc_rw(uint64_t len)
@@ -50,22 +48,7 @@ platform_alloc_rw(uint64_t len)
 
 void *
 platform_alloc_rwe(uint64_t len)
-{
-    void *addr = nullptr;
-
-    if (len == 0) {
-        BFALERT("platform_alloc_rwe: invalid length\n");
-        return addr;
-    }
-
-    addr = __vmalloc(len, GFP_KERNEL, PAGE_KERNEL_EXEC);
-
-    if (addr == nullptr) {
-        BFALERT("platform_alloc_rwe: failed to vmalloc rwe mem: %lld\n", len);
-    }
-
-    return addr;
-}
+{ return platform_alloc_rw(len); }
 
 void
 platform_free_rw(void *addr, uint64_t len)
@@ -81,15 +64,7 @@ platform_free_rw(void *addr, uint64_t len)
 
 void
 platform_free_rwe(void *addr, uint64_t len)
-{
-    bfignored(len);
-
-    if (addr == nullptr) {
-        return;
-    }
-
-    vfree(addr);
-}
+{ return platform_free_rw(addr, len); }
 
 void *
 platform_virt_to_phys(void *virt)

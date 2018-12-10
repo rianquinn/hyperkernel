@@ -55,19 +55,6 @@
 //   time.
 //
 
-#define alloc_page() platform_memset(platform_alloc_rwe(0x1000), 0, 0x1000);
-#define alloc_buffer(sz) platform_memset(platform_alloc_rwe((sz)), 0, (sz));
-
-/* -------------------------------------------------------------------------- */
-/* VM                                                                         */
-/* -------------------------------------------------------------------------- */
-
-
-/* -------------------------------------------------------------------------- */
-/* Ack                                                                        */
-/* -------------------------------------------------------------------------- */
-
-uint32_t _cpuid_eax(uint32_t val) NOEXCEPT;
 
 /* -------------------------------------------------------------------------- */
 /* Signal Handling                                                            */
@@ -113,27 +100,6 @@ setup_kill_signal_handler(void)
 /* Domain Functions                                                           */
 /* -------------------------------------------------------------------------- */
 
-status_t
-vcpu_op__create_vcpu(void)
-{
-    status_t ret;
-
-    g_vm.vcpuid = __vcpu_op__create_vcpu(g_vm.domainid);
-    if (g_vm.vcpuid == INVALID_VCPUID) {
-        BFALERT("__vcpu_op__create_vcpu failed\n");
-        return FAILURE;
-    }
-
-
-    ret = __vcpu_op__set_rip(g_vm.vcpuid, (uint64_t)g_vm.entry);
-    if (ret != SUCCESS) {
-        BFALERT("__vcpu_op__set_rip failed\n");
-        return FAILURE;
-    }
-
-    return SUCCESS;
-}
-
 void *
 vcpu_op__run_vcpu(void *arg)
 {
@@ -163,20 +129,6 @@ vcpu_op__run_vcpu(void *arg)
                 return 0;
         }
     }
-}
-
-status_t
-vcpu_op__destroy_vcpu(void)
-{
-    status_t ret;
-
-    ret = __vcpu_op__destroy_vcpu(g_vm.vcpuid);
-    if (ret != SUCCESS) {
-        BFALERT("__vcpu_op__destroy_vcpu failed\n");
-        return FAILURE;
-    }
-
-    return SUCCESS;
 }
 
 /* -------------------------------------------------------------------------- */

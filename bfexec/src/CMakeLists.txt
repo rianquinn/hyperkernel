@@ -53,4 +53,8 @@ if(CYGWIN OR WIN32)
     target_link_libraries(bfexec setupapi)
 endif()
 
+if(UNIX)
+    target_link_libraries(bfexec pthread)
+endif()
+
 install(TARGETS bfexec DESTINATION bin)

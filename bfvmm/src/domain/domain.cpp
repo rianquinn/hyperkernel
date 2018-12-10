@@ -46,4 +46,12 @@ domain::domainid_type
 domain::id() const noexcept
 { return m_id; }
 
+void
+domain::set_entry(uint64_t gpa) noexcept
+{ m_entry = gpa; }
+
+uint64_t
+domain::entry() const noexcept
+{ return m_entry; }
+
 }

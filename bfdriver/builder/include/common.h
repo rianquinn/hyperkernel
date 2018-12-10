@@ -25,23 +25,28 @@
 #include <bfelf_loader.h>
 #include <bfbuilderinterface.h>
 
-#include "xen/start_info.h"
+#include <xen/public/elfnote.h>
+#include <xen/public/arch-x86/hvm/start_info.h>
 
 #define HYPERVISOR_NOT_LOADED bfscast(status_t, 0x8000000000000001)
 #define CREATE_FROM_ELF_FAILED bfscast(status_t, 0x8000000000000002)
 #define DESTROY_FAILED bfscast(status_t, 0x8000000000000003)
 
 struct vm_t {
-    struct crt_info_t crt_info;
     struct bfelf_loader_t bfelf_loader;
     struct bfelf_binary_t bfelf_binary;
 
-    void *entry;
+    uint32_t entry;
     uint64_t domainid;
 
-    int used;
+    void *bios_ram;
+    void *zero_page;
 
-    struct hvm_start_info *start_info;
+    struct hvm_start_info *xen_start_info;
+    char *xen_cmdl;
+    void *xen_console;
+
+    int used;
 };
 
 /**
