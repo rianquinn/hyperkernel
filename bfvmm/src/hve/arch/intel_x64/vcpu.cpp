@@ -124,9 +124,21 @@ void
 vcpu::write_dom0_guest_state(domain *domain)
 {
     this->set_eptp(domain->ept());
-    // vtd_sandbox::visr_device::enable(this);
-    // vtd_sandbox::interrupt_remapping::enable(this);
+
+    // Use this function to "replace" a real PCI deivce with the visr device at
+    // the given bus/device/function
+    // vtd_sandbox::visr_device::enable(this, 2, 0, 0);
+
+    // Use this function insert the visr device at a PCI bus/device/function
+    // that is not currently occupied by a real device
+    // vtd_sandbox::interrupt_remapping::enable(this, 2, 0, 0);
+
+    // Use this function to hide the NIC, by hiding a hardcoded PCI
+    // device/function defined in vtd_sandbox.h
     // vtd_sandbox::hidden_nic::enable(this);
+
+    // Use this function to map an entire PCI bus to a "view" of memory
+    // in which DMA translation will be shared with the given EPT mmap
     // vtd_sandbox::dma_remapping::map_bus(0, 0, domain->ept());
     // vtd_sandbox::dma_remapping::map_bus(1, 0, domain->ept());
     // vtd_sandbox::dma_remapping::map_bus(3, 0, domain->ept());

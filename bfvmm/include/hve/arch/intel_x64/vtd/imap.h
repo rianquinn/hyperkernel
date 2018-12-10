@@ -96,6 +96,26 @@ public:
         free_irt(m_irt);
     }
 
+    void
+    remap_interrupt(uint64_t index, uint64_t vector, uint64_t apic_id)
+    {
+        auto &irte = m_irt.virt_addr.at(index);
+        intel_x64::vtd::irte::p::enable(irte);          // Mark entry present
+        intel_x64::vtd::irte::fpd::disable(irte);       // Fault processing = on
+        intel_x64::vtd::irte::dm::enable(irte);         // Use Logical APIC id
+        intel_x64::vtd::irte::rh::disable(irte);        // Direct to a single processor
+        // If redirecting an MSI, change the following to Edge-sensitive (disabled)
+        intel_x64::vtd::irte::tm::enable(irte);         // Level-sensitive interrupt
+        intel_x64::vtd::irte::dlm::set(irte, 0x1);      // Single-destination delivery
+        intel_x64::vtd::irte::avail::set(irte, 0xa);    // Ignored: use as a signature
+        intel_x64::vtd::irte::im::disable(irte);        // Remapping mode
+        intel_x64::vtd::irte::v::set(irte, vector);     // Destination IDT vector
+        intel_x64::vtd::irte::dst::set(irte, apic_id);  // Destination xAPIC ID
+        intel_x64::vtd::irte::sid::set(irte, 0);        // Don't use source-id validation
+        intel_x64::vtd::irte::sq::set(irte, 0);         // Don't use source-id validation
+        intel_x64::vtd::irte::svt::set(irte, 0);        // Don't use source-id validation
+    }
+
     phys_addr_t
     phys_addr()
     { return m_irt.phys_addr; }
@@ -113,12 +133,13 @@ public:
         // bfdebug_subnhex(0, "Interupt remapping table base virtual", irt_base_virt);
         // bfdebug_subnhex(0, "Interupt remapping table base physical", irt_base_phys);
         bfdebug_info(0, "Interupt remapping table entries:");
+        uint64_t index = 0;
         for (auto &irte : m_irt.virt_addr) {
             if (vtd::irte::p::is_enabled(irte)) {
-                bfdebug_info(0, "interupt remapping table entry:");
+                bfdebug_nhex(0, "Interupt Remapping Table Entry At Index:", index);
                 vtd::irte::dump(0, irte);
-                bfdebug_info(0, "");
             }
+            index++;
         }
     }
 

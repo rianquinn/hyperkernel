@@ -20,7 +20,8 @@ namespace hidden_nic
 
 namespace visr_device
 {
-    void enable(gsl::not_null<eapis::intel_x64::vcpu *> vcpu);
+    void enable(gsl::not_null<eapis::intel_x64::vcpu *> vcpu, uint64_t bus,
+        uint64_t device, uint64_t function);
 }
 
 namespace dma_remapping
@@ -31,7 +32,8 @@ namespace dma_remapping
 
 namespace interrupt_remapping
 {
-    void enable(gsl::not_null<eapis::intel_x64::vcpu *> vcpu);
+    void enable(gsl::not_null<eapis::intel_x64::vcpu *> vcpu, uint64_t bus,
+        uint64_t device, uint64_t function);
 }
 
 }
