@@ -45,35 +45,30 @@ vcpu_thread(vcpuid_t vcpuid)
 {
     using namespace std::chrono;
 
-    // while(true) {
-bfline
+    while(true) {
         auto ret = __run_op(vcpuid, 0, 0);
-bfline
         switch(run_op_ret(ret)) {
             case __enum_run_op__hlt:
-bfline
                 return;
 
             case __enum_run_op__fault:
-                std::cerr << "[" << vcpuid << "] ";
+                std::cerr << "[0x" << std::hex << vcpuid << std::dec << "] ";
                 std::cerr << "vcpu fault: " << run_op_arg(ret) << '\n';
                 return;
 
             case __enum_run_op__resume_after_interrupt:
-                return;
+                continue;
 
             case __enum_run_op__yield:
                 std::this_thread::sleep_for(microseconds(run_op_arg(ret)));
-                return;
+                continue;
 
             default:
-                std::cerr << "[" << vcpuid << "] ";
+                std::cerr << "[0x" << std::hex << vcpuid << std::dec << "] ";
                 std::cerr << "unknown vcpu ret: " << run_op_ret(ret) << '\n';
                 return;
         }
-    // }
-
-bfline
+    }
 }
 
 static int

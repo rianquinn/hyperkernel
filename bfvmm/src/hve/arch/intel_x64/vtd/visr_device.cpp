@@ -373,47 +373,49 @@ handle_cff_out(
 void
 print_ioapic_redirection_table(gsl::not_null<vcpu_t *> vcpu)
 {
-    bfdebug_info(0, "Looking up IOAPIC Redirection Table");
-    uintptr_t ioapic_base_phys = 0xfec00000;
-    auto my_vcpu = vcpu_cast(vcpu);
-    auto ioapic_base_virt = my_vcpu->map_hpa_4k<uint32_t>(ioapic_base_phys);
-    uint32_t ioregsel = 0;
-    uint32_t iowin = 0;
-    intel_x64::ioapic::rte_t rte = 0;
+    bfignored(vcpu);
 
-    ioregsel = 0;
-    ioapic_base_virt.get()[0] = ioregsel;
-    iowin = ioapic_base_virt.get()[4];
-    bfdebug_subnhex(0, "IOAPIC ID:", iowin);
+    // bfdebug_info(0, "Looking up IOAPIC Redirection Table");
+    // uintptr_t ioapic_base_phys = 0xfec00000;
+    // auto my_vcpu = vcpu_cast(vcpu);
+    // auto ioapic_base_virt = my_vcpu->map_hpa_4k<uint32_t>(ioapic_base_phys);
+    // uint32_t ioregsel = 0;
+    // uint32_t iowin = 0;
+    // intel_x64::ioapic::rte_t rte = 0;
 
-    ioregsel = 1;
-    ioapic_base_virt.get()[0] = ioregsel;
-    iowin = ioapic_base_virt.get()[4];
-    bfdebug_subnhex(0, "IOAPIC Version:", iowin);
+    // ioregsel = 0;
+    // ioapic_base_virt.get()[0] = ioregsel;
+    // iowin = ioapic_base_virt.get()[4];
+    // bfdebug_subnhex(0, "IOAPIC ID:", iowin);
 
-    ioregsel = 2;
-    ioapic_base_virt.get()[0] = ioregsel;
-    iowin = ioapic_base_virt.get()[4];
-    bfdebug_subnhex(0, "IOAPIC Arbitration ID:", iowin);
+    // ioregsel = 1;
+    // ioapic_base_virt.get()[0] = ioregsel;
+    // iowin = ioapic_base_virt.get()[4];
+    // bfdebug_subnhex(0, "IOAPIC Version:", iowin);
 
-    for(uint32_t i = 0x10; i <= 0x3F; i+=2) {
-        // {31:0]
-        ioregsel = i;
-        ioapic_base_virt.get()[0] = ioregsel;
-        iowin = ioapic_base_virt.get()[4];
-        rte = iowin;
+    // ioregsel = 2;
+    // ioapic_base_virt.get()[0] = ioregsel;
+    // iowin = ioapic_base_virt.get()[4];
+    // bfdebug_subnhex(0, "IOAPIC Arbitration ID:", iowin);
 
-        // {63:32]
-        ioregsel = i;
-        ioapic_base_virt.get()[0] = ioregsel;
-        iowin = ioapic_base_virt.get()[4];
-        rte = rte | (iowin << 32);
-        if(intel_x64::ioapic::rte::vector::get(rte) != 0xFF && rte != 0) {
-            bfdebug_nhex(0, "IOAPIC Redirection Table Entry index:", i - 0x10);
-            intel_x64::ioapic::rte::dump(0, rte);
-            bfdebug_info(0, "");
-        }
-    }
+    // for(uint32_t i = 0x10; i <= 0x3F; i+=2) {
+    //     // {31:0]
+    //     ioregsel = i;
+    //     ioapic_base_virt.get()[0] = ioregsel;
+    //     iowin = ioapic_base_virt.get()[4];
+    //     rte = iowin;
+
+    //     // {63:32]
+    //     ioregsel = i;
+    //     ioapic_base_virt.get()[0] = ioregsel;
+    //     iowin = ioapic_base_virt.get()[4];
+    //     rte = rte | (iowin << 32);
+    //     if(intel_x64::ioapic::rte::vector::get(rte) != 0xFF && rte != 0) {
+    //         bfdebug_nhex(0, "IOAPIC Redirection Table Entry index:", i - 0x10);
+    //         intel_x64::ioapic::rte::dump(0, rte);
+    //         bfdebug_info(0, "");
+    //     }
+    // }
 }
 
 bool
@@ -484,9 +486,9 @@ windows_isr_ack(
 void
 enable(
     gsl::not_null<eapis::intel_x64::vcpu *> vcpu,
-    uint64_t bus,
-    uint64_t device,
-    uint64_t function
+    uint32_t bus,
+    uint32_t device,
+    uint32_t function
 )
 {
     // Make sure there is a real PCI device at the address we want to emulate

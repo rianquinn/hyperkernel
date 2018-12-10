@@ -122,7 +122,7 @@ add_e820_entry(void *vm, uint64_t saddr, uint64_t eaddr, uint32_t type);
 static inline int64_t
 setup_e820_map(void *vm, uint64_t size)
 {
-    status_t ret;
+    status_t ret = 0;
 
     if (size >= 0xFDC00000) {
         BFALERT("setup_e820_map: unsupported amount of RAM\n");

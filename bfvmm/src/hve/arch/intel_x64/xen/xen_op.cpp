@@ -418,6 +418,8 @@ bool
 xen_op_handler::exit_handler(
     gsl::not_null<vcpu_t *> vcpu)
 {
+    bfignored(vcpu);
+
     // Note:
     //
     // Note that this function is executed on every exit, so we want to
@@ -438,40 +440,33 @@ xen_op_handler::exit_handler(
 // xAPIC
 // -----------------------------------------------------------------------------
 
-uint64_t
+uint32_t
 src_op_value(gsl::not_null<vcpu_t *> vcpu, int64_t src_op)
 {
     switch (src_op) {
         case hyperkernel::intel_x64::insn_decoder::eax:
-            return vcpu->rax() & 0xFFFFFFFFU;
+            return gsl::narrow_cast<uint32_t>(vcpu->rax()) & 0xFFFFFFFFU;
         case hyperkernel::intel_x64::insn_decoder::ecx:
-            return vcpu->rcx() & 0xFFFFFFFFU;
+            return gsl::narrow_cast<uint32_t>(vcpu->rcx()) & 0xFFFFFFFFU;
         case hyperkernel::intel_x64::insn_decoder::edx:
-            return vcpu->rdx() & 0xFFFFFFFFU;
+            return gsl::narrow_cast<uint32_t>(vcpu->rdx()) & 0xFFFFFFFFU;
         case hyperkernel::intel_x64::insn_decoder::ebx:
-            return vcpu->rbx() & 0xFFFFFFFFU;
+            return gsl::narrow_cast<uint32_t>(vcpu->rbx()) & 0xFFFFFFFFU;
         case hyperkernel::intel_x64::insn_decoder::esp:
-            return vcpu->rsp() & 0xFFFFFFFFU;
+            return gsl::narrow_cast<uint32_t>(vcpu->rsp()) & 0xFFFFFFFFU;
         case hyperkernel::intel_x64::insn_decoder::ebp:
-            return vcpu->rbp() & 0xFFFFFFFFU;
+            return gsl::narrow_cast<uint32_t>(vcpu->rbp()) & 0xFFFFFFFFU;
         case hyperkernel::intel_x64::insn_decoder::esi:
-            return vcpu->rsi() & 0xFFFFFFFFU;
+            return gsl::narrow_cast<uint32_t>(vcpu->rsi()) & 0xFFFFFFFFU;
         case hyperkernel::intel_x64::insn_decoder::edi:
-            return vcpu->rdi() & 0xFFFFFFFFU;
+            return gsl::narrow_cast<uint32_t>(vcpu->rdi()) & 0xFFFFFFFFU;
     }
 
     throw std::invalid_argument("invalid reg");
 }
 
-static void print_insn(const unsigned char *buf, size_t len)
-{
-    for (auto i = 0; i < len; i++) {
-        printf("%02x", buf[i]);
-    }
-}
-
 void
-xen_op_handler::xapic_handle_write_icr(uint64_t low)
+xen_op_handler::xapic_handle_write_icr(uint32_t low)
 {
     using namespace eapis::intel_x64::lapic;
 
@@ -497,7 +492,7 @@ xen_op_handler::xapic_handle_write_icr(uint64_t low)
 }
 
 void
-xen_op_handler::xapic_handle_write_lvt_timer(uint64_t val)
+xen_op_handler::xapic_handle_write_lvt_timer(uint32_t val)
 {
     using namespace eapis::intel_x64::lapic;
 
@@ -547,7 +542,7 @@ xen_op_handler::xapic_handle_write(
         return false;
     }
 
-    const auto idx = bfn::lower(info.gpa) >> 2;
+    const auto idx = gsl::narrow_cast<uint32_t>(bfn::lower(info.gpa) >> 2);
     if (idx == eoi::indx) {
         info.ignore_advance = false;
         return true;
@@ -850,6 +845,8 @@ bool
 xen_op_handler::cpuid_ack_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info)
 {
+    bfignored(info);
+
     bfdebug_nhex(0, "ack received", vcpu->rax());
     return true;
 }
@@ -1174,7 +1171,7 @@ xen_op_handler::XENMEM_decrease_reservation_handler(
         auto map = vcpu->map_gva_4k<xen_pfn_t>(gva, len);
         auto gfn = map.get();
 
-        for (auto i = 0; i < arg->nr_extents; i++) {
+        for (auto i = 0U; i < arg->nr_extents; i++) {
             auto dom = m_vcpu->dom();
             auto gpa = (gfn[i] << x64::pt::page_shift);
             dom->unmap(gpa);

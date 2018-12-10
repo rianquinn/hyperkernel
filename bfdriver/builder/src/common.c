@@ -332,6 +332,11 @@ common_create_from_elf(
         return CREATE_FROM_ELF_FAILED;
     }
 
+    ret = setup_e820_map(vm, args->size);
+    if (ret != SUCCESS) {
+        return ret;
+    }
+
     ret = setup_xen_start_info(vm);
     if (ret != SUCCESS) {
         return ret;

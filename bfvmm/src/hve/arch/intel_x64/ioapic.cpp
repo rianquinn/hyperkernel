@@ -56,10 +56,10 @@ void ioapic::select(uint32_t offset)
 { m_offset = offset; }
 
 uint32_t ioapic::read() const
-{ return m_ioapic_view[m_offset]; }
+{ return m_ioapic_view[static_cast<std::ptrdiff_t>(m_offset)]; }
 
 void ioapic::write(uint32_t val)
-{ m_ioapic_view[m_offset] = val; }
+{ m_ioapic_view[static_cast<std::ptrdiff_t>(m_offset)] = val; }
 
 void ioapic::set_window(uint32_t val)
 {

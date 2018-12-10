@@ -38,9 +38,9 @@ bool
 vmcall_run_op_handler::dispatch(
     gsl::not_null<vcpu *> vcpu)
 {
-    // if (vcpu->rax() != __enum_run_op) {
+    if (vcpu->rax() != __enum_run_op) {
         return false;
-    // }
+    }
 
     try {
         if (m_child_vcpu == nullptr ||

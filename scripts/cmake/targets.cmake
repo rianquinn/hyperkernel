@@ -74,3 +74,9 @@ add_custom_target_info(
     TARGET hkd_quick
     COMMENT "Unload, clean, build, and load the Bareflank driver"
 )
+
+add_dependencies(driver_build hkd_build)
+add_dependencies(driver_clean hkd_clean)
+add_dependencies(driver_load hkd_load)
+add_dependencies(driver_unload hkd_unload)
+add_dependencies(driver_quick hkd_quick)

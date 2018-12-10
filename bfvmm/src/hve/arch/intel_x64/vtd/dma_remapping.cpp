@@ -145,7 +145,7 @@ disable_dma_remapping()
         }
         // bfdebug_info(0, "done");
     }
-    
+
     // -------------------------------------------------------------------------
     // Clear root-table pointer
     // -------------------------------------------------------------------------
@@ -172,7 +172,7 @@ disable_dma_remapping()
 // }
 
 void
-map_bus(uint64_t bus, uint64_t dma_domain_id, eapis::intel_x64::ept::mmap &mmap) 
+map_bus(uint64_t bus, uint64_t dma_domain_id, eapis::intel_x64::ept::mmap &mmap)
 {
     bfn::call_once(vtd_mmap_init_flag, [&] {
         g_vtd_mmap.init();
@@ -184,6 +184,8 @@ map_bus(uint64_t bus, uint64_t dma_domain_id, eapis::intel_x64::ept::mmap &mmap)
 void
 enable(gsl::not_null<eapis::intel_x64::vcpu *> vcpu)
 {
+    bfignored(vcpu);
+
     bfn::call_once(vtd_mmap_init_flag, [&] {
         enable_dma_remapping(g_vtd_mmap);
     });

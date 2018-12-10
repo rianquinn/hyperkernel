@@ -125,6 +125,11 @@ vmcall_domain_op_handler::domain_op__add_e820_entry(
             args->addr, args->size, args->type
         });
 
+        bfdebug_info(0, "add_e820_entry");
+        bfdebug_subnhex(0, "addr", args->addr);
+        bfdebug_subnhex(0, "size", args->size);
+        bfdebug_subnhex(0, "type", args->type);
+
         vcpu->set_rax(SUCCESS);
     }
     catchall({

@@ -225,8 +225,8 @@ private:
         gsl::not_null<vcpu_t *> vcpu,
         eapis::intel_x64::ept_violation_handler::info_t &info);
 
-    void xapic_handle_write_icr(uint64_t icr_low);
-    void xapic_handle_write_lvt_timer(uint64_t timer);
+    void xapic_handle_write_icr(uint32_t icr_low);
+    void xapic_handle_write_lvt_timer(uint32_t timer);
 
     // -------------------------------------------------------------------------
     // Helpers

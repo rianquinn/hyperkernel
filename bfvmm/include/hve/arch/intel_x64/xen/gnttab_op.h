@@ -100,7 +100,7 @@ private:
 
     vcpu *m_vcpu{};
     xen_op_handler *m_xen_op{};
-    uint64_t m_version{};
+    uint32_t m_version{};
 
     std::vector<page_ptr<shared_entry_t>> m_shared_gnttab;
 

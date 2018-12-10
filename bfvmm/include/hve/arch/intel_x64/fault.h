@@ -76,12 +76,9 @@ fault(gsl::not_null<vcpu_t *> vcpu, const char *str)
     bferror_subtext(0, "exit reason", exit_reason::basic_exit_reason::description());
     bferror_subnhex(0, "exit qualification", exit_qualification::get());
 
-bfline
     bfvmm::intel_x64::check::all();
-bfline
 
     if (auto parent_vcpu = vcpu_cast(vcpu)->parent_vcpu()) {
-bfline
 
         bferror_lnbr(0);
         bferror_info(0, "child vCPU being killed");
@@ -93,7 +90,6 @@ bfline
     else {
         vcpu->set_rax(FAILURE);
     }
-bfline
 }
 
 #endif

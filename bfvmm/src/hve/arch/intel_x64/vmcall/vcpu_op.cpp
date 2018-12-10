@@ -47,29 +47,6 @@ vmcall_vcpu_op_handler::vcpu_op__create_vcpu(
     })
 }
 
-// void
-// vmcall_vcpu_op_handler::vcpu_op__run_vcpu(
-//     gsl::not_null<vcpu *> vcpu)
-// {
-//     try {
-//         if (m_child_vcpu == nullptr || m_child_vcpu->id() != vcpu->rcx()) {
-//             m_child_vcpu = get_vcpu(vcpu->rcx());
-//         }
-
-//         m_child_vcpu->set_parent_vcpu(vcpu);
-
-//         if (m_child_vcpu->is_alive()) {
-//             m_child_vcpu->load();
-//             m_child_vcpu->run(&world_switch);
-//         }
-
-//         vcpu->set_rax(SUCCESS);
-//     }
-//     catchall({
-//         vcpu->set_rax(FAILURE);
-//     })
-// }
-
 void
 vmcall_vcpu_op_handler::vcpu_op__kill_vcpu(
     gsl::not_null<vcpu *> vcpu)
@@ -83,7 +60,7 @@ vmcall_vcpu_op_handler::vcpu_op__kill_vcpu(
     //
 
     try {
-        auto child_vcpu = get_vcpu(vcpu->rdx());
+        auto child_vcpu = get_vcpu(vcpu->rcx());
         child_vcpu->kill();
 
         vcpu->set_rax(SUCCESS);
@@ -106,7 +83,7 @@ vmcall_vcpu_op_handler::vcpu_op__destroy_vcpu(
     //
 
     try {
-        g_vcm->destroy(vcpu->rdx(), nullptr);
+        g_vcm->destroy(vcpu->rcx(), nullptr);
         vcpu->set_rax(SUCCESS);
     }
     catchall({
@@ -126,10 +103,6 @@ vmcall_vcpu_op_handler::dispatch(
         case __enum_vcpu_op__create_vcpu:
             this->vcpu_op__create_vcpu(vcpu);
             return true;
-
-        // case __enum_vcpu_op__run_vcpu:
-        //     this->vcpu_op__run_vcpu(vcpu);
-        //     return true;
 
         case __enum_vcpu_op__kill_vcpu:
             this->vcpu_op__kill_vcpu(vcpu);

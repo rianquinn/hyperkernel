@@ -177,13 +177,13 @@ vcpu::write_domU_guest_state(domain *domain)
 
     vm_entry_controls::ia_32e_mode_guest::disable();
 
-    uint64_t es_index = 3;
-    uint64_t cs_index = 2;
-    uint64_t ss_index = 3;
-    uint64_t ds_index = 3;
-    uint64_t fs_index = 3;
-    uint64_t gs_index = 3;
-    uint64_t tr_index = 4;
+    unsigned es_index = 3;
+    unsigned cs_index = 2;
+    unsigned ss_index = 3;
+    unsigned ds_index = 3;
+    unsigned fs_index = 3;
+    unsigned gs_index = 3;
+    unsigned tr_index = 4;
 
     guest_es_selector::set(es_index << 3);
     guest_cs_selector::set(cs_index << 3);
@@ -315,7 +315,7 @@ vcpu::return_hlt()
 void
 vcpu::return_fault(uint64_t error)
 {
-    this->set_rax((error << 4) | __enum_run_op__hlt);
+    this->set_rax((error << 4) | __enum_run_op__fault);
     this->run(&world_switch);
 }
 
