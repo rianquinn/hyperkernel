@@ -22,7 +22,6 @@
 #include <queue>
 
 #include "vmexit/external_interrupt.h"
-#include "vmexit/fault.h"
 #include "vmexit/vmcall.h"
 
 #include "vmcall/domain_op.h"
@@ -347,6 +346,20 @@ public:
     ///
     domain *dom();
 
+    //--------------------------------------------------------------------------
+    // Fault
+    //--------------------------------------------------------------------------
+
+    /// Halt the vCPU
+    ///
+    /// Halts the vCPU. The default action is to freeze the physical core
+    /// resulting in a hang, but this function can be overrided to provide
+    /// a safer action if possible.
+    ///
+    /// @param str the reason for the halt
+    ///
+    void halt(const std::string &str = {}) override;
+
 private:
 
     domain *m_domain{};
@@ -354,7 +367,6 @@ private:
     ioapic m_ioapic;
 
     external_interrupt_handler m_external_interrupt_handler;
-    fault_handler m_fault_handler;
     vmcall_handler m_vmcall_handler;
 
     vmcall_domain_op_handler m_vmcall_domain_op_handler;

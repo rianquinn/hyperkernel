@@ -18,8 +18,8 @@
 
 #include <intrinsics.h>
 
+#include <hve/arch/intel_x64/vcpu.h>
 #include <hve/arch/intel_x64/lapic.h>
-#include <hve/arch/intel_x64/fault.h>
 
 //--------------------------------------------------------------------------
 // Implementation

@@ -222,4 +222,12 @@ void
 domain::add_e820_entry(const e820_entry_t &entry)
 { m_e820_map.emplace_back(entry); }
 
+void
+domain::set_pt_uart(uint8_t uart) noexcept
+{ m_pt_uart = uart; }
+
+uint8_t
+domain::pt_uart() const noexcept
+{ return m_pt_uart; }
+
 }

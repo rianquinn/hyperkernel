@@ -25,6 +25,7 @@
 #include <bfvmm/vcpu/vcpu_manager.h>
 #include <bfvmm/hve/arch/intel_x64/vcpu.h>
 
+#include "domain.h"
 #include "../../../domain/domain_manager.h"
 
 #ifndef PAGE_SIZE

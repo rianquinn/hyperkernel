@@ -124,6 +124,10 @@ create_elf_vm(const args_type &args)
         cmdl.add("init=" + args["init"].as<std::string>());
     }
 
+    if (args.count("cmdline")) {
+        cmdl.add(args["cmdline"].as<std::string>());
+    }
+
     ioctl_args.file = file.data();
     ioctl_args.file_size = file.size();
     ioctl_args.cmdl = cmdl.data();

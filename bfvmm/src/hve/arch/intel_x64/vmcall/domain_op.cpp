@@ -125,11 +125,6 @@ vmcall_domain_op_handler::domain_op__add_e820_entry(
             args->addr, args->size, args->type
         });
 
-        bfdebug_info(0, "add_e820_entry");
-        bfdebug_subnhex(0, "addr", args->addr);
-        bfdebug_subnhex(0, "size", args->size);
-        bfdebug_subnhex(0, "type", args->type);
-
         vcpu->set_rax(SUCCESS);
     }
     catchall({
@@ -148,6 +143,27 @@ vmcall_domain_op_handler::domain_op__set_entry(
         }
 
         get_domain(vcpu->rcx())->set_entry(vcpu->rdx());
+        vcpu->set_rax(SUCCESS);
+    }
+    catchall({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
+void
+vmcall_domain_op_handler::domain_op__set_pt_uart(
+    gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        if (vcpu->rcx() == self) {
+            throw std::runtime_error(
+                "domain_op__set_pt_uart: self not supported");
+        }
+
+        get_domain(vcpu->rcx())->set_pt_uart(
+            gsl::narrow_cast<uint8_t>(vcpu->rdx())
+        );
+
         vcpu->set_rax(SUCCESS);
     }
     catchall({
@@ -182,6 +198,10 @@ vmcall_domain_op_handler::dispatch(
 
         case __enum_domain_op__set_entry:
             this->domain_op__set_entry(vcpu);
+            return true;
+
+        case __enum_domain_op__set_pt_uart:
+            this->domain_op__set_pt_uart(vcpu);
             return true;
 
         default:

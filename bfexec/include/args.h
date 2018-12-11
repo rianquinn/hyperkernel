@@ -38,6 +38,7 @@ parse_args(int argc, char *argv[])
         ("size", "The VM's total RAM", value<uint64_t>(), "[bytes]")
         ("uart", "Pass-through provided UART to VM", value<uint64_t>(), "[port #]")
         ("init", "The VM's init process", value<std::string>(), "[path]");
+        ("cmdline", "Additional command line arguments", value<std::string>(), "[text]");
 
     auto args = options.parse(argc, argv);
 

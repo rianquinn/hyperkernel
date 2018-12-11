@@ -31,16 +31,12 @@
 #include "evtchn_op.h"
 #include "gnttab_op.h"
 
+#include <eapis/hve/arch/x64/unmapper.h>
 #include <eapis/hve/arch/intel_x64/vmexit/cpuid.h>
 #include <eapis/hve/arch/intel_x64/vmexit/wrmsr.h>
 #include <eapis/hve/arch/intel_x64/vmexit/rdmsr.h>
 #include <eapis/hve/arch/intel_x64/vmexit/io_instruction.h>
 #include <eapis/hve/arch/intel_x64/vmexit/ept_violation.h>
-
-#include <eapis/hve/arch/x64/unmapper.h>
-
-#include <bfcallonce.h>
-
 
 // -----------------------------------------------------------------------------
 // Exports
@@ -72,7 +68,7 @@ class EXPORT_HYPERKERNEL_HVE xen_op_handler
 public:
 
     xen_op_handler(
-        gsl::not_null<vcpu *> vcpu);
+        gsl::not_null<vcpu *> vcpu, gsl::not_null<domain *> domain);
 
     /// Destructor
     ///
@@ -255,8 +251,9 @@ private:
 private:
 
     vcpu *m_vcpu;
-    vcpu_info_t *m_vcpu_info;
+    domain *m_domain;
 
+    vcpu_info_t *m_vcpu_info;
     uint64_t m_hypercall_page_gpa{};
 
     eapis::x64::unique_map<vcpu_runstate_info_t> m_runstate_info;

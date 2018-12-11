@@ -16,6 +16,7 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
+#include <bfcallonce.h>
 #include <bfgpalayout.h>
 
 #include <iostream>
@@ -98,9 +99,10 @@ namespace hyperkernel::intel_x64
 static uint64_t tsc_frequency(void);
 
 xen_op_handler::xen_op_handler(
-    gsl::not_null<vcpu *> vcpu
+    gsl::not_null<vcpu *> vcpu, gsl::not_null<domain *> domain
 ) :
     m_vcpu{vcpu},
+    m_domain{domain},
     m_evtchn_op{std::make_unique<evtchn_op>(vcpu, this)},
     m_gnttab_op{std::make_unique<gnttab_op>(vcpu, this)}
 {
@@ -144,6 +146,15 @@ xen_op_handler::xen_op_handler(
 
     if (vcpu->is_dom0()) {
         return;
+    }
+
+    if (auto uart = domain->pt_uart(); uart != 0) {
+        vcpu->pass_through_io_accesses(0x3F8 + 0);
+        vcpu->pass_through_io_accesses(0x3F8 + 1);
+        vcpu->pass_through_io_accesses(0x3F8 + 2);
+        vcpu->pass_through_io_accesses(0x3F8 + 3);
+        vcpu->pass_through_io_accesses(0x3F8 + 4);
+        vcpu->pass_through_io_accesses(0x3F8 + 5);
     }
 
     vcpu->pass_through_msr_access(::x64::msrs::ia32_pat::addr);
@@ -215,6 +226,11 @@ xen_op_handler::xen_op_handler(
     EMULATE_IO_INSTRUCTION(0x70, io_zero_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0x71, io_zero_handler, io_ignore_handler);
 
+    /// TODO: We need to trace these down. These are Serial ports
+    ///     that are not being given to Linux. These either need to be
+    ///     turned off in the kernel, or we need to setup default
+    ///     handlers in the vCPU for these when the pt and em UARTs/TTYs
+    ///     are not using them (which is likley the case)
     EMULATE_IO_INSTRUCTION(0x2F9, io_zero_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0x3FE, io_zero_handler, io_ignore_handler);
 
@@ -228,32 +244,6 @@ xen_op_handler::xen_op_handler(
 
     this->register_unplug_quirk();
 
-    /// TODO:
-    ///
-    /// This currently gives the serial device to the guest. At some point we
-    /// will need to emulate these instead of passing them through which will
-    /// allow the hypervisor and the guest to co-exist. For now this works,
-    /// just make sure that the serial settings for the hypervisor and the
-    /// guest are identical.
-    ///
-    vcpu->pass_through_io_accesses(0x3f8);
-    vcpu->pass_through_io_accesses(0x3f9);
-    vcpu->pass_through_io_accesses(0x3fa);
-    vcpu->pass_through_io_accesses(0x3fb);
-    vcpu->pass_through_io_accesses(0x3fc);
-    vcpu->pass_through_io_accesses(0x3fd);
-    vcpu->pass_through_io_accesses(0xEFF0);
-    vcpu->pass_through_io_accesses(0xEFF1);
-    vcpu->pass_through_io_accesses(0xEFF2);
-    vcpu->pass_through_io_accesses(0xEFF3);
-    vcpu->pass_through_io_accesses(0xEFF4);
-    vcpu->pass_through_io_accesses(0xEFF5);
-    vcpu->pass_through_io_accesses(0xEFF8);
-    vcpu->pass_through_io_accesses(0xEFF9);
-    vcpu->pass_through_io_accesses(0xEFFA);
-    vcpu->pass_through_io_accesses(0xEFFB);
-    vcpu->pass_through_io_accesses(0xEFFC);
-    vcpu->pass_through_io_accesses(0xEFFD);
 
     ADD_EPT_WRITE_HANDLER(ioapic_handle_write);
     ADD_EPT_WRITE_HANDLER(xapic_handle_write);
@@ -343,20 +333,24 @@ xen_op_handler::handle_vmx_pet(gsl::not_null<vcpu_t *> vcpu)
 bool
 xen_op_handler::handle_hlt(gsl::not_null<vcpu_t *> vcpu)
 {
-    expects(m_tsc_freq_khz > 1000U);
-    advance(vcpu);
+    vcpu->advance();
 
     const auto pet_ticks = m_vcpu->get_vmx_preemption_timer();
     const auto tsc_ticks = pet_ticks << m_pet_shift;
-    const auto usec = tsc_ticks / (m_tsc_freq_khz / 1000U);
+    const auto uhz = m_tsc_freq_khz / 1000U;
+    uint64_t usec = 1;
+
+    if (uhz != 0) {
+        usec = tsc_ticks / (uhz);
+    }
 
     /// We clear Linux's sti blocking because we are sleeping from
     /// a hlt instruction. Linux does sti right before the hlt, so
     /// blocking_by_sti is set. If we don't clear it and try to inject
     /// later, VM-entry will fail.
     ///
-
     ::intel_x64::vmcs::guest_interruptibility_state::blocking_by_sti::disable();
+
     m_vcpu->disable_vmx_preemption_timer();
     m_vcpu->queue_timer_interrupt();
     m_vcpu->parent_vcpu()->load();

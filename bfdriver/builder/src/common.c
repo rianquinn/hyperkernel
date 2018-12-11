@@ -101,6 +101,26 @@ donate_page_to_page_range(
 }
 
 /* -------------------------------------------------------------------------- */
+/* UART                                                                       */
+/* -------------------------------------------------------------------------- */
+
+static status_t
+pass_through_uart(
+    struct vm_t *vm, uint64_t uart)
+{
+    status_t ret = SUCCESS;
+
+    if (uart != 0) {
+        ret = __domain_op__set_pt_uart(vm->domainid, uart);
+        if (ret != SUCCESS) {
+            BFALERT("donate_page: __domain_op__set_pt_uart failed\n");
+        }
+    }
+
+    return ret;
+}
+
+/* -------------------------------------------------------------------------- */
 /* GPA Functions                                                              */
 /* -------------------------------------------------------------------------- */
 
@@ -368,6 +388,11 @@ common_create_from_elf(
     }
 
     ret = setup_entry(vm);
+    if (ret != SUCCESS) {
+        return ret;
+    }
+
+    ret = pass_through_uart(vm, args->uart);
     if (ret != SUCCESS) {
         return ret;
     }
