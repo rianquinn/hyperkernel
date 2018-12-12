@@ -32,13 +32,14 @@ parse_args(int argc, char *argv[])
         ("h,help", "Print this help menu")
         ("v,verbose", "Enable verbose output")
         ("version", "Print the version")
-        ("attach", "The domain to attach to", value<uint64_t>(), "[domid]")
-        ("elf", "Create a VM from an ELF file")
+        ("attach", "Attach to a VM that was already created", value<uint64_t>(), "[domid]")
+        ("elf", "Create a VM from an ELF file and attach to it")
         ("path", "The VM's path", value<std::string>(), "[path]")
         ("size", "The VM's total RAM", value<uint64_t>(), "[bytes]")
-        ("uart", "Pass-through provided UART to VM", value<uint64_t>(), "[port #]")
-        ("init", "The VM's init process", value<std::string>(), "[path]");
-        ("cmdline", "Additional command line arguments", value<std::string>(), "[text]");
+        ("uart", "Pass-through a UART to VM", value<uint64_t>(), "[port #]")
+        ("init", "The VM's init process", value<std::string>(), "[path]")
+        ("cmdline", "Additional Linux command line arguments", value<std::string>(), "[text]")
+        ("affinity", "The host CPU to execute the VM on", value<int>(), "[core #]");
 
     auto args = options.parse(argc, argv);
 

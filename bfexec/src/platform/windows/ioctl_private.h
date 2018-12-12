@@ -35,7 +35,7 @@ public:
     ~ioctl_private() override;
 
     void call_ioctl_create_from_elf(create_from_elf_args &args);
-    void call_ioctl_destroy(domainid_t domainid);
+    void call_ioctl_destroy(domainid_t domainid) noexcept;
 
 private:
     HANDLE fd;

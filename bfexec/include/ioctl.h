@@ -97,7 +97,7 @@ public:
     ///
     /// @param domainid the domain to destroy
     ///
-    void call_ioctl_destroy(domainid_t domainid);
+    void call_ioctl_destroy(domainid_t domainid) noexcept;
 
 private:
 

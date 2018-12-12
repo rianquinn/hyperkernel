@@ -127,9 +127,9 @@ ioctl_private::call_ioctl_create_from_elf(create_from_elf_args &args)
 }
 
 void
-ioctl_private::call_ioctl_destroy(domainid_t domainid)
+ioctl_private::call_ioctl_destroy(domainid_t domainid) noexcept
 {
     if (bfm_read_write_ioctl(fd, IOCTL_DESTROY_CMD, &domainid, sizeof(domainid_t)) < 0) {
-        throw std::runtime_error("ioctl failed: IOCTL_DESTROY_CMD");
+        std::cerr << "[ERROR] ioctl failed: IOCTL_DESTROY_CMD\n";
     }
 }

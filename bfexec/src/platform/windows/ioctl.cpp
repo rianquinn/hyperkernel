@@ -32,7 +32,7 @@ ioctl::call_ioctl_create_from_elf(create_from_elf_args &args)
 }
 
 void
-ioctl::call_ioctl_destroy(domainid_t domainid)
+ioctl::call_ioctl_destroy(domainid_t domainid) noexcept
 {
     if (auto d = dynamic_cast<ioctl_private *>(m_d.get())) {
         d->call_ioctl_destroy(domainid);

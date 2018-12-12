@@ -23,6 +23,7 @@
 //    disabled.
 //
 
+#include <iostream>
 #include <ioctl_private.h>
 
 #include <bfgsl.h>
@@ -71,9 +72,9 @@ ioctl_private::call_ioctl_create_from_elf(create_from_elf_args &args)
 }
 
 void
-ioctl_private::call_ioctl_destroy(domainid_t domainid)
+ioctl_private::call_ioctl_destroy(domainid_t domainid) noexcept
 {
     if (bfm_write_ioctl(fd, IOCTL_DESTROY_CMD, &domainid) < 0) {
-        throw std::runtime_error("ioctl failed: IOCTL_DESTROY_CMD");
+        std::cerr << "[ERROR] ioctl failed: IOCTL_DESTROY_CMD\n";
     }
 }

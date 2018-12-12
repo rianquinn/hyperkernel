@@ -40,6 +40,10 @@ domainid_t g_domainid;
 
 auto ctl = std::make_unique<ioctl>();
 
+// -----------------------------------------------------------------------------
+// vCPU Thread
+// -----------------------------------------------------------------------------
+
 void
 vcpu_thread(vcpuid_t vcpuid)
 {
@@ -71,6 +75,49 @@ vcpu_thread(vcpuid_t vcpuid)
     }
 }
 
+// -----------------------------------------------------------------------------
+// Signal Handling
+// -----------------------------------------------------------------------------
+
+#include <signal.h>
+
+void
+kill_signal_handler(void)
+{
+    status_t ret;
+
+    std::cout << '\n';
+    std::cout << '\n';
+    std::cout << "killing VM: " << g_domainid << '\n';
+
+    ret = __vcpu_op__kill_vcpu(g_vcpuid);
+    if (ret != SUCCESS) {
+        BFALERT("__vcpu_op__kill_vcpu failed\n");
+        return;
+    }
+
+    return;
+}
+
+void
+sig_handler(int sig)
+{
+    bfignored(sig);
+    return kill_signal_handler();
+}
+
+void
+setup_kill_signal_handler(void)
+{
+    signal(SIGINT, sig_handler);
+    signal(SIGQUIT, sig_handler);
+    signal(SIGTERM, sig_handler);
+}
+
+// -----------------------------------------------------------------------------
+// Attach to VM
+// -----------------------------------------------------------------------------
+
 static int
 attach_to_vm(const args_type &args)
 {
@@ -96,6 +143,10 @@ attach_to_vm(const args_type &args)
 
     return EXIT_SUCCESS;
 }
+
+// -----------------------------------------------------------------------------
+// Create VM
+// -----------------------------------------------------------------------------
 
 static void
 create_elf_vm(const args_type &args)
@@ -143,9 +194,28 @@ create_elf_vm(const args_type &args)
     g_domainid = ioctl_args.domainid;
 }
 
+// -----------------------------------------------------------------------------
+// Main Functions
+// -----------------------------------------------------------------------------
+
 static int
 protected_main(const args_type &args)
 {
+    if (args.count("affinity")) {
+        set_affinity(args["affinity"].as<int>());
+    }
+    else {
+
+        // TODO:
+        //
+        // We need to remove the need for affinity. Right now if you don't
+        // state affinity, we default to 0 because we don't support VMCS
+        // migration, which needs to be fixed.
+        //
+
+        set_affinity(0);
+    }
+
     if (args.count("elf")) {
         create_elf_vm(args);
     }
@@ -165,7 +235,7 @@ protected_main(const args_type &args)
 int
 main(int argc, char *argv[])
 {
-    set_affinity(0);
+    setup_kill_signal_handler();
 
     try {
         args_type args = parse_args(argc, argv);
