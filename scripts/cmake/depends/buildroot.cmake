@@ -37,16 +37,16 @@ set(BR_URL_MD5 "1c140382fb8778b6c4458014e1fef4fb"
 set(BR_SRC_DIR ${CACHE_DIR}/buildroot CACHE INTERNAL "")
 set(BR_BIN_DIR ${DEPENDS_DIR}/buildroot/${USERSPACE_PREFIX}/build/${ERB_IMAGE} CACHE INTERNAL "")
 
-set(BR_CONFIG_IN ${HK_ERB_DIR}/image/${ERB_IMAGE}/buildroot.config.in CACHE INTERNAL "")
+set(BR_CONFIG_IN ${HK_SOURCE_ERB_DIR}/image/${ERB_IMAGE}/buildroot.config.in CACHE INTERNAL "")
 set(BR_CONFIG_OUT ${BR_BIN_DIR}/.config CACHE INTERNAL "")
-set(BR_CONFIG_LINUX_IN ${HK_ERB_DIR}/image/${ERB_IMAGE}/linux.config.in CACHE INTERNAL "")
+set(BR_CONFIG_LINUX_IN ${HK_SOURCE_ERB_DIR}/image/${ERB_IMAGE}/linux.config.in CACHE INTERNAL "")
 set(BR_CONFIG_LINUX_OUT ${BR_BIN_DIR}/.linux-config CACHE INTERNAL "")
 
 if(ERB_LINUX_OVERRIDE)
-    set(BR_OVERRIDE_IN ${HK_ERB_DIR}/image/${ERB_IMAGE}/override.mk.in CACHE INTERNAL "")
+    set(BR_OVERRIDE_IN ${HK_SOURCE_ERB_DIR}/image/${ERB_IMAGE}/override.mk.in CACHE INTERNAL "")
     message(STATUS "Using linux source: ${ERB_LINUX_OVERRIDE}")
 else()
-    set(BR_OVERRIDE_IN ${HK_ERB_DIR}/image/null-override.mk CACHE INTERNAL "")
+    set(BR_OVERRIDE_IN ${HK_SOURCE_ERB_DIR}/image/null-override.mk CACHE INTERNAL "")
     message(STATUS "Using linux source: https://github.com/connojd/linux.git")
 endif()
 

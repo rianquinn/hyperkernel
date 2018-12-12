@@ -1,6 +1,6 @@
 //
-// Bareflank Extended APIs
-// Copyright (C) 2018 Assured Information Security, Inc.
+// Bareflank Hypervisor
+// Copyright (C) 2015 Assured Information Security, Inc.
 //
 // This library is free software; you can redistribute it and/or
 // modify it under the terms of the GNU Lesser General Public
@@ -16,19 +16,25 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-#ifndef GPA_LAYOUT_H
-#define GPA_LAYOUT_H
+#include <ioctl.h>
+#include <ioctl_private.h>
 
-#define CONSOLE_GPA         0x07000
-#define STORE_GPA           0x08000
+ioctl::ioctl() :
+    m_d {std::make_unique<ioctl_private>()}
+{ }
 
-#define ACPI_RSDP_GPA       0xE0000
-#define ACPI_XSDT_GPA       0xE1000
-#define ACPI_MADT_GPA       0xE2000
-#define ACPI_FADT_GPA       0xE3000
-#define ACPI_DSDT_GPA       0x9000
+void
+ioctl::call_ioctl_create_from_elf(create_from_elf_args &args)
+{
+    if (auto d = dynamic_cast<ioctl_private *>(m_d.get())) {
+        d->call_ioctl_create_from_elf(args);
+    }
+}
 
-#define LAPIC_GPA           0xFEE00000
-#define IOAPIC_GPA           0xFEC00000
-
-#endif
+void
+ioctl::call_ioctl_destroy(domainid_t domainid)
+{
+    if (auto d = dynamic_cast<ioctl_private *>(m_d.get())) {
+        d->call_ioctl_destroy(domainid);
+    }
+}

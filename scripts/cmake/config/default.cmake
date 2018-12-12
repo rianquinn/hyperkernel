@@ -17,15 +17,58 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 # ------------------------------------------------------------------------------
-# Constants
+# Source Tree
 # ------------------------------------------------------------------------------
 
-set(HK_ROOT_DIR ${CMAKE_CURRENT_LIST_DIR}/../../.. CACHE INTERNAL "")
-set(HK_CMAKE_DIR ${HK_ROOT_DIR}/scripts/cmake CACHE INTERNAL "")
-set(HK_CONFIG_DIR ${HK_ROOT_DIR}/scripts/cmake/config CACHE INTERNAL "")
-set(HK_DEPEND_DIR ${HK_ROOT_DIR}/scripts/cmake/depends CACHE INTERNAL "")
-set(HK_UTIL_DIR ${HK_ROOT_DIR}/scripts/util CACHE INTERNAL "")
-set(HK_ERB_DIR ${HK_ROOT_DIR}/erb CACHE INTERNAL "")
+set(HK_SOURCE_ROOT_DIR ${CMAKE_CURRENT_LIST_DIR}/../../..
+    CACHE INTERNAL
+    "Hyperkernel Source root direfctory"
+)
+
+set(HK_SOURCE_CMAKE_DIR ${HK_SOURCE_ROOT_DIR}/scripts/cmake
+    CACHE INTERNAL
+    "Hyperkernel Cmake directory"
+)
+
+set(HK_SOURCE_CONFIG_DIR ${HK_SOURCE_ROOT_DIR}/scripts/cmake/config
+    CACHE INTERNAL
+    "Hyperkernel Cmake configurations directory"
+)
+
+set(HK_SOURCE_DEPENDS_DIR ${HK_SOURCE_ROOT_DIR}/scripts/cmake/depends
+    CACHE INTERNAL
+    "Hyperkernel Cmake dependencies directory"
+)
+
+set(HK_SOURCE_UTIL_DIR ${HK_SOURCE_ROOT_DIR}/scripts/util
+    CACHE INTERNAL
+    "Hyperkernel Utility directory"
+)
+
+set(HK_SOURCE_BFDRIVER_DIR ${HK_SOURCE_ROOT_DIR}/bfdriver
+    CACHE INTERNAL
+    "Hyperkernel bfdriver source dir"
+)
+
+set(HK_SOURCE_BFEXEC_DIR ${HK_SOURCE_ROOT_DIR}/bfexec
+    CACHE INTERNAL
+    "Hyperkernel bfexec source dir"
+)
+
+set(HK_SOURCE_BFSDK_DIR ${HK_SOURCE_ROOT_DIR}/bfsdk
+    CACHE INTERNAL
+    "Hyperkernel bfsdk source dir"
+)
+
+set(HK_SOURCE_BFVMM_DIR ${HK_SOURCE_ROOT_DIR}/bfvmm
+    CACHE INTERNAL
+    "Hyperkernel bfvmm source dir"
+)
+
+set(HK_SOURCE_ERB_DIR ${HK_SOURCE_ROOT_DIR}/erb
+    CACHE INTERNAL
+    "Hyperkernel erb source dir"
+)
 
 # ------------------------------------------------------------------------------
 # Project-wide configs
@@ -83,7 +126,7 @@ add_config(
 add_config(
     CONFIG_NAME ERB_ROOTFS_OVERLAY
     CONFIG_TYPE STRING
-    DEFAULT_VAL "${HK_ERB_DIR}/image/${ERB_IMAGE}/overlay"
+    DEFAULT_VAL "${HK_SOURCE_ERB_DIR}/image/${ERB_IMAGE}/overlay"
     DESCRIPTION "Directory to overlay onto the rootfs"
 )
 

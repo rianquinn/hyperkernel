@@ -43,7 +43,7 @@ gnttab_op::gnttab_op(
 void
 gnttab_op::query_size(gsl::not_null<gnttab_query_size_t *> arg)
 {
-    arg->nr_frames = m_shared_gnttab.size();
+    arg->nr_frames = gsl::narrow_cast<uint32_t>(m_shared_gnttab.size());
     arg->max_nr_frames = max_nr_frames;
     arg->status = GNTST_okay;
 }

@@ -23,24 +23,20 @@
 
 #include "../base.h"
 
-#include "public/xen.h"
-#include "public/vcpu.h"
-#include "public/grant_table.h"
-#include "public/arch-x86/cpuid.h"
+#include <xen/public/xen.h>
+#include <xen/public/vcpu.h>
+#include <xen/public/grant_table.h>
+#include <xen/public/arch-x86/cpuid.h>
 
 #include "evtchn_op.h"
 #include "gnttab_op.h"
 
+#include <eapis/hve/arch/x64/unmapper.h>
 #include <eapis/hve/arch/intel_x64/vmexit/cpuid.h>
 #include <eapis/hve/arch/intel_x64/vmexit/wrmsr.h>
 #include <eapis/hve/arch/intel_x64/vmexit/rdmsr.h>
 #include <eapis/hve/arch/intel_x64/vmexit/io_instruction.h>
 #include <eapis/hve/arch/intel_x64/vmexit/ept_violation.h>
-
-#include <eapis/hve/arch/x64/unmapper.h>
-
-#include <bfcallonce.h>
-
 
 // -----------------------------------------------------------------------------
 // Exports
@@ -72,7 +68,7 @@ class EXPORT_HYPERKERNEL_HVE xen_op_handler
 public:
 
     xen_op_handler(
-        gsl::not_null<vcpu *> vcpu);
+        gsl::not_null<vcpu *> vcpu, gsl::not_null<domain *> domain);
 
     /// Destructor
     ///
@@ -225,8 +221,8 @@ private:
         gsl::not_null<vcpu_t *> vcpu,
         eapis::intel_x64::ept_violation_handler::info_t &info);
 
-    void xapic_handle_write_icr(uint64_t icr_low);
-    void xapic_handle_write_lvt_timer(uint64_t timer);
+    void xapic_handle_write_icr(uint32_t icr_low);
+    void xapic_handle_write_lvt_timer(uint32_t timer);
 
     // -------------------------------------------------------------------------
     // Helpers
@@ -255,8 +251,9 @@ private:
 private:
 
     vcpu *m_vcpu;
-    vcpu_info_t *m_vcpu_info;
+    domain *m_domain;
 
+    vcpu_info_t *m_vcpu_info;
     uint64_t m_hypercall_page_gpa{};
 
     eapis::x64::unique_map<vcpu_runstate_info_t> m_runstate_info;

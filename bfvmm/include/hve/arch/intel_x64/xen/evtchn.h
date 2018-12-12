@@ -20,7 +20,7 @@
 #define EVTCHN_INTEL_X64_HYPERKERNEL_H
 
 #include "../base.h"
-#include "public/event_channel.h"
+#include <xen/public/event_channel.h>
 
 // -----------------------------------------------------------------------------
 // Exports

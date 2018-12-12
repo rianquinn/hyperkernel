@@ -18,10 +18,10 @@
 
 #include <intrinsics.h>
 
+#include <bfgpalayout.h>
 #include <hve/arch/intel_x64/lapic.h>
 #include <hve/arch/intel_x64/ioapic.h>
 #include <hve/arch/intel_x64/vcpu.h>
-#include <hve/arch/intel_x64/fault.h>
 #include <hve/arch/intel_x64/vtd/vtd_sandbox.h>
 
 //------------------------------------------------------------------------------
@@ -32,7 +32,7 @@ static bool
 cpuid_handler(
     gsl::not_null<vcpu_t *> vcpu)
 {
-    fault(vcpu, "cpuid_handler executed. unsupported!!!");
+    vcpu->halt("cpuid_handler executed. unsupported!!!");
 
     // Unreachable
     return true;
@@ -42,7 +42,7 @@ static bool
 rdmsr_handler(
     gsl::not_null<vcpu_t *> vcpu)
 {
-    fault(vcpu, "rdmsr_handler executed. unsupported!!!");
+    vcpu->halt("rdmsr_handler executed. unsupported!!!");
 
     // Unreachable
     return true;
@@ -52,7 +52,7 @@ static bool
 wrmsr_handler(
     gsl::not_null<vcpu_t *> vcpu)
 {
-    fault(vcpu, "wrmsr_handler executed. unsupported!!!");
+    vcpu->halt("wrmsr_handler executed. unsupported!!!");
 
     // Unreachable
     return true;
@@ -62,7 +62,7 @@ static bool
 io_instruction_handler(
     gsl::not_null<vcpu_t *> vcpu)
 {
-    fault(vcpu, "io_instruction_handler executed. unsupported!!!");
+    vcpu->halt("io_instruction_handler executed. unsupported!!!");
 
     // Unreachable
     return true;
@@ -72,7 +72,7 @@ static bool
 ept_violation_handler(
     gsl::not_null<vcpu_t *> vcpu)
 {
-    fault(vcpu, "ept_violation_handler executed. unsupported!!!");
+    vcpu->halt("ept_violation_handler executed. unsupported!!!");
 
     // Unreachable
     return true;
@@ -87,7 +87,7 @@ namespace hyperkernel::intel_x64
 
 vcpu::vcpu(
     vcpuid::type id,
-    gsl::not_null<hyperkernel::intel_x64::domain *> domain
+    gsl::not_null<domain *> domain
 ) :
     eapis::intel_x64::vcpu{
         id, domain->global_state()
@@ -98,14 +98,13 @@ vcpu::vcpu(
     m_ioapic{this},
 
     m_external_interrupt_handler{this},
-    m_fault_handler{this},
     m_vmcall_handler{this},
 
     m_vmcall_domain_op_handler{this},
+    m_vmcall_run_op_handler{this},
     m_vmcall_vcpu_op_handler{this},
-    m_vmcall_bf86_op_handler{this},
 
-    m_xen_op_handler{this}
+    m_xen_op_handler{this, domain}
 {
     if (this->is_dom0()) {
         this->write_dom0_guest_state(domain);
@@ -173,13 +172,13 @@ vcpu::write_domU_guest_state(domain *domain)
 
     vm_entry_controls::ia_32e_mode_guest::disable();
 
-    uint64_t es_index = 3;
-    uint64_t cs_index = 2;
-    uint64_t ss_index = 3;
-    uint64_t ds_index = 3;
-    uint64_t fs_index = 3;
-    uint64_t gs_index = 3;
-    uint64_t tr_index = 4;
+    unsigned es_index = 3;
+    unsigned cs_index = 2;
+    unsigned ss_index = 3;
+    unsigned ds_index = 3;
+    unsigned fs_index = 3;
+    unsigned gs_index = 3;
+    unsigned tr_index = 4;
 
     guest_es_selector::set(es_index << 3);
     guest_cs_selector::set(cs_index << 3);
@@ -228,6 +227,9 @@ vcpu::write_domU_guest_state(domain *domain)
     using namespace secondary_processor_based_vm_execution_controls;
     enable_invpcid::disable();
     enable_xsaves_xrstors::disable();
+
+    this->set_rip(domain->entry());
+    this->set_rbx(XEN_START_INFO_PAGE_GPA);
 
     this->add_default_cpuid_handler(
         ::handler_delegate_t::create<cpuid_handler>()
@@ -302,30 +304,30 @@ vcpu::parent_vcpu() const
 { return m_parent_vcpu; }
 
 void
-vcpu::return_success()
+vcpu::return_hlt()
 {
-    this->set_rax(SUCCESS);
+    this->set_rax(__enum_run_op__hlt);
     this->run(&world_switch);
 }
 
 void
-vcpu::return_failure()
+vcpu::return_fault(uint64_t error)
 {
-    this->set_rax(FAILURE);
+    this->set_rax((error << 4) | __enum_run_op__fault);
     this->run(&world_switch);
 }
 
 void
-vcpu::return_and_continue()
+vcpu::return_resume_after_interrupt()
 {
-    this->set_rax(VCPU_OP__RUN_CONTINUE);
+    this->set_rax(__enum_run_op__resume_after_interrupt);
     this->run(&world_switch);
 }
 
 void
-vcpu::return_and_sleep(uint64_t usec)
+vcpu::return_yield(uint64_t usec)
 {
-    this->set_rax((usec << 16U) | VCPU_OP__RUN_SLEEP);
+    this->set_rax((usec << 4) | __enum_run_op__yield);
     this->run(&world_switch);
 }
 
@@ -404,5 +406,35 @@ vcpu::e820_map()
 domain *
 vcpu::dom()
 { return m_domain; }
+
+//------------------------------------------------------------------------------
+// Fault
+//------------------------------------------------------------------------------
+
+/// TODO:
+///
+/// We still need to get the exception handler in the base hypervisor to
+/// use this function instead of just calling halt() so that we can recover
+/// even if an exception fires in the hypervisor.
+///
+
+void
+vcpu::halt(const std::string &str)
+{
+    this->dump(("halting vcpu: " + str).c_str());
+
+    if (auto parent_vcpu = this->parent_vcpu()) {
+
+        bferror_lnbr(0);
+        bferror_info(0, "child vcpu being killed");
+        bferror_lnbr(0);
+
+        parent_vcpu->load();
+        parent_vcpu->return_fault();
+    }
+    else {
+        ::x64::pm::stop();
+    }
+}
 
 }

@@ -17,9 +17,9 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 #include <bfdebug.h>
-#include <hve/arch/intel_x64/domain.h>
+#include <bfgpalayout.h>
 
-#include "../../../../../include/gpa_layout.h"
+#include <hve/arch/intel_x64/domain.h>
 
 using namespace eapis::intel_x64;
 
@@ -64,9 +64,9 @@ domain::setup_domU()
     m_idt_phys = g_mm->virtint_to_physint(m_idt.base());
     m_tss_phys = g_mm->virtptr_to_physint(m_tss.get());
 
-    m_gdt_virt = 0x1000;
-    m_idt_virt = 0x2000;
-    m_tss_virt = 0x3000;
+    m_gdt_virt = INITIAL_GDT_GPA;
+    m_idt_virt = INITIAL_IDT_GPA;
+    m_tss_virt = INITIAL_TSS_GPA;
 
     m_gdt.set(2, nullptr, 0xFFFFFFFF, 0xc09b);
     m_gdt.set(3, nullptr, 0xFFFFFFFF, 0xc093);
@@ -221,5 +221,13 @@ domain::release(uintptr_t gpa)
 void
 domain::add_e820_entry(const e820_entry_t &entry)
 { m_e820_map.emplace_back(entry); }
+
+void
+domain::set_pt_uart(uint8_t uart) noexcept
+{ m_pt_uart = uart; }
+
+uint8_t
+domain::pt_uart() const noexcept
+{ return m_pt_uart; }
 
 }

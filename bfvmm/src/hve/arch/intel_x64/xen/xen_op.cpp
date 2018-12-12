@@ -16,26 +16,25 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
+#include <bfcallonce.h>
+#include <bfgpalayout.h>
+
 #include <iostream>
 #include <hve/arch/intel_x64/vcpu.h>
 #include <hve/arch/intel_x64/lapic.h>
 #include <eapis/hve/arch/intel_x64/time.h>
 
-#include <hve/arch/intel_x64/xen/public/xen.h>
-#include <hve/arch/intel_x64/xen/public/event_channel.h>
-#include <hve/arch/intel_x64/xen/public/memory.h>
-#include <hve/arch/intel_x64/xen/public/version.h>
-#include <hve/arch/intel_x64/xen/public/vcpu.h>
-#include <hve/arch/intel_x64/xen/public/hvm/hvm_op.h>
-#include <hve/arch/intel_x64/xen/public/hvm/params.h>
-#include <hve/arch/intel_x64/xen/public/arch-x86/cpuid.h>
+#include <xen/public/xen.h>
+#include <xen/public/event_channel.h>
+#include <xen/public/memory.h>
+#include <xen/public/version.h>
+#include <xen/public/vcpu.h>
+#include <xen/public/hvm/hvm_op.h>
+#include <xen/public/hvm/params.h>
+#include <xen/public/arch-x86/cpuid.h>
 
 #include <hve/arch/intel_x64/xen/xen_op.h>
 #include <hve/arch/intel_x64/xen/evtchn_op.h>
-#include "../../../../../../include/gpa_layout.h"
-
-// wrmsr_safe(0xC0000600, dec, 0);
-// wrmsr_safe(0xC0000700, hex, 0);
 
 // =============================================================================
 // Definitions
@@ -100,9 +99,10 @@ namespace hyperkernel::intel_x64
 static uint64_t tsc_frequency(void);
 
 xen_op_handler::xen_op_handler(
-    gsl::not_null<vcpu *> vcpu
+    gsl::not_null<vcpu *> vcpu, gsl::not_null<domain *> domain
 ) :
     m_vcpu{vcpu},
+    m_domain{domain},
     m_evtchn_op{std::make_unique<evtchn_op>(vcpu, this)},
     m_gnttab_op{std::make_unique<gnttab_op>(vcpu, this)}
 {
@@ -146,6 +146,15 @@ xen_op_handler::xen_op_handler(
 
     if (vcpu->is_dom0()) {
         return;
+    }
+
+    if (auto uart = domain->pt_uart(); uart != 0) {
+        vcpu->pass_through_io_accesses(0x3F8 + 0);
+        vcpu->pass_through_io_accesses(0x3F8 + 1);
+        vcpu->pass_through_io_accesses(0x3F8 + 2);
+        vcpu->pass_through_io_accesses(0x3F8 + 3);
+        vcpu->pass_through_io_accesses(0x3F8 + 4);
+        vcpu->pass_through_io_accesses(0x3F8 + 5);
     }
 
     vcpu->pass_through_msr_access(::x64::msrs::ia32_pat::addr);
@@ -217,6 +226,11 @@ xen_op_handler::xen_op_handler(
     EMULATE_IO_INSTRUCTION(0x70, io_zero_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0x71, io_zero_handler, io_ignore_handler);
 
+    /// TODO: We need to trace these down. These are Serial ports
+    ///     that are not being given to Linux. These either need to be
+    ///     turned off in the kernel, or we need to setup default
+    ///     handlers in the vCPU for these when the pt and em UARTs/TTYs
+    ///     are not using them (which is likley the case)
     EMULATE_IO_INSTRUCTION(0x2F9, io_zero_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0x3FE, io_zero_handler, io_ignore_handler);
 
@@ -230,32 +244,6 @@ xen_op_handler::xen_op_handler(
 
     this->register_unplug_quirk();
 
-    /// TODO:
-    ///
-    /// This currently gives the serial device to the guest. At some point we
-    /// will need to emulate these instead of passing them through which will
-    /// allow the hypervisor and the guest to co-exist. For now this works,
-    /// just make sure that the serial settings for the hypervisor and the
-    /// guest are identical.
-    ///
-    vcpu->pass_through_io_accesses(0x3f8);
-    vcpu->pass_through_io_accesses(0x3f9);
-    vcpu->pass_through_io_accesses(0x3fa);
-    vcpu->pass_through_io_accesses(0x3fb);
-    vcpu->pass_through_io_accesses(0x3fc);
-    vcpu->pass_through_io_accesses(0x3fd);
-    vcpu->pass_through_io_accesses(0xEFF0);
-    vcpu->pass_through_io_accesses(0xEFF1);
-    vcpu->pass_through_io_accesses(0xEFF2);
-    vcpu->pass_through_io_accesses(0xEFF3);
-    vcpu->pass_through_io_accesses(0xEFF4);
-    vcpu->pass_through_io_accesses(0xEFF5);
-    vcpu->pass_through_io_accesses(0xEFF8);
-    vcpu->pass_through_io_accesses(0xEFF9);
-    vcpu->pass_through_io_accesses(0xEFFA);
-    vcpu->pass_through_io_accesses(0xEFFB);
-    vcpu->pass_through_io_accesses(0xEFFC);
-    vcpu->pass_through_io_accesses(0xEFFD);
 
     ADD_EPT_WRITE_HANDLER(ioapic_handle_write);
     ADD_EPT_WRITE_HANDLER(xapic_handle_write);
@@ -272,9 +260,7 @@ xen_op_handler::xen_op_handler(
 
 static inline bool
 vmware_guest(void)
-{
-    return ::x64::cpuid::ebx::get(0x40000000) == 0x61774d56;
-}
+{ return ::x64::cpuid::ebx::get(0x40000000) == 0x61774d56; }
 
 static uint64_t
 tsc_frequency(void)
@@ -347,24 +333,28 @@ xen_op_handler::handle_vmx_pet(gsl::not_null<vcpu_t *> vcpu)
 bool
 xen_op_handler::handle_hlt(gsl::not_null<vcpu_t *> vcpu)
 {
-    expects(m_tsc_freq_khz > 1000U);
-    advance(vcpu);
+    vcpu->advance();
 
     const auto pet_ticks = m_vcpu->get_vmx_preemption_timer();
     const auto tsc_ticks = pet_ticks << m_pet_shift;
-    const auto usec = tsc_ticks / (m_tsc_freq_khz / 1000U);
+    const auto uhz = m_tsc_freq_khz / 1000U;
+    uint64_t usec = 1;
+
+    if (uhz != 0) {
+        usec = tsc_ticks / (uhz);
+    }
 
     /// We clear Linux's sti blocking because we are sleeping from
     /// a hlt instruction. Linux does sti right before the hlt, so
     /// blocking_by_sti is set. If we don't clear it and try to inject
     /// later, VM-entry will fail.
     ///
-
     ::intel_x64::vmcs::guest_interruptibility_state::blocking_by_sti::disable();
+
     m_vcpu->disable_vmx_preemption_timer();
     m_vcpu->queue_timer_interrupt();
     m_vcpu->parent_vcpu()->load();
-    m_vcpu->parent_vcpu()->return_and_sleep(usec);
+    m_vcpu->parent_vcpu()->return_yield(usec);
 
     // Unreachable
     return true;
@@ -422,6 +412,8 @@ bool
 xen_op_handler::exit_handler(
     gsl::not_null<vcpu_t *> vcpu)
 {
+    bfignored(vcpu);
+
     // Note:
     //
     // Note that this function is executed on every exit, so we want to
@@ -442,40 +434,33 @@ xen_op_handler::exit_handler(
 // xAPIC
 // -----------------------------------------------------------------------------
 
-uint64_t
+uint32_t
 src_op_value(gsl::not_null<vcpu_t *> vcpu, int64_t src_op)
 {
     switch (src_op) {
         case hyperkernel::intel_x64::insn_decoder::eax:
-            return vcpu->rax() & 0xFFFFFFFFU;
+            return gsl::narrow_cast<uint32_t>(vcpu->rax()) & 0xFFFFFFFFU;
         case hyperkernel::intel_x64::insn_decoder::ecx:
-            return vcpu->rcx() & 0xFFFFFFFFU;
+            return gsl::narrow_cast<uint32_t>(vcpu->rcx()) & 0xFFFFFFFFU;
         case hyperkernel::intel_x64::insn_decoder::edx:
-            return vcpu->rdx() & 0xFFFFFFFFU;
+            return gsl::narrow_cast<uint32_t>(vcpu->rdx()) & 0xFFFFFFFFU;
         case hyperkernel::intel_x64::insn_decoder::ebx:
-            return vcpu->rbx() & 0xFFFFFFFFU;
+            return gsl::narrow_cast<uint32_t>(vcpu->rbx()) & 0xFFFFFFFFU;
         case hyperkernel::intel_x64::insn_decoder::esp:
-            return vcpu->rsp() & 0xFFFFFFFFU;
+            return gsl::narrow_cast<uint32_t>(vcpu->rsp()) & 0xFFFFFFFFU;
         case hyperkernel::intel_x64::insn_decoder::ebp:
-            return vcpu->rbp() & 0xFFFFFFFFU;
+            return gsl::narrow_cast<uint32_t>(vcpu->rbp()) & 0xFFFFFFFFU;
         case hyperkernel::intel_x64::insn_decoder::esi:
-            return vcpu->rsi() & 0xFFFFFFFFU;
+            return gsl::narrow_cast<uint32_t>(vcpu->rsi()) & 0xFFFFFFFFU;
         case hyperkernel::intel_x64::insn_decoder::edi:
-            return vcpu->rdi() & 0xFFFFFFFFU;
+            return gsl::narrow_cast<uint32_t>(vcpu->rdi()) & 0xFFFFFFFFU;
     }
 
     throw std::invalid_argument("invalid reg");
 }
 
-static void print_insn(const unsigned char *buf, size_t len)
-{
-    for (auto i = 0; i < len; i++) {
-        printf("%02x", buf[i]);
-    }
-}
-
 void
-xen_op_handler::xapic_handle_write_icr(uint64_t low)
+xen_op_handler::xapic_handle_write_icr(uint32_t low)
 {
     using namespace eapis::intel_x64::lapic;
 
@@ -501,7 +486,7 @@ xen_op_handler::xapic_handle_write_icr(uint64_t low)
 }
 
 void
-xen_op_handler::xapic_handle_write_lvt_timer(uint64_t val)
+xen_op_handler::xapic_handle_write_lvt_timer(uint32_t val)
 {
     using namespace eapis::intel_x64::lapic;
 
@@ -551,7 +536,7 @@ xen_op_handler::xapic_handle_write(
         return false;
     }
 
-    const auto idx = bfn::lower(info.gpa) >> 2;
+    const auto idx = gsl::narrow_cast<uint32_t>(bfn::lower(info.gpa) >> 2);
     if (idx == eoi::indx) {
         info.ignore_advance = false;
         return true;
@@ -854,6 +839,8 @@ bool
 xen_op_handler::cpuid_ack_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info)
 {
+    bfignored(info);
+
     bfdebug_nhex(0, "ack received", vcpu->rax());
     return true;
 }
@@ -1178,7 +1165,7 @@ xen_op_handler::XENMEM_decrease_reservation_handler(
         auto map = vcpu->map_gva_4k<xen_pfn_t>(gva, len);
         auto gfn = map.get();
 
-        for (auto i = 0; i < arg->nr_extents; i++) {
+        for (auto i = 0U; i < arg->nr_extents; i++) {
             auto dom = m_vcpu->dom();
             auto gpa = (gfn[i] << x64::pt::page_shift);
             dom->unmap(gpa);
@@ -1707,13 +1694,9 @@ xen_op_handler::HVMOP_get_param_handler(gsl::not_null<vcpu *> vcpu)
                 break;
 
             case HVM_PARAM_CONSOLE_PFN:
-                m_console = vcpu->map_gpa_4k<uint8_t>(CONSOLE_GPA);
-                arg->value = CONSOLE_GPA >> x64::pt::page_shift;
+                m_console = vcpu->map_gpa_4k<uint8_t>(XEN_CONSOLE_PAGE_GPA);
+                arg->value = XEN_CONSOLE_PAGE_GPA >> x64::pt::page_shift;
                 break;
-
-//            case HVM_PARAM_STORE_EVTCHN:
-//                arg->value = m_evtchn_op->bind_store();
-//                break;
 
             default:
                 bfdebug_info(0, "Unsupported HVM get_param:");

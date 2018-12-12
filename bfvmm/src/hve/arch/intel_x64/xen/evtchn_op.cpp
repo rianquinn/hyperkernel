@@ -165,8 +165,8 @@ evtchn_op::setup_control_block(uint64_t gfn, uint32_t offset)
     uint8_t *base = m_ctl_blk_ump.get() + offset;
     m_ctl_blk = reinterpret_cast<evtchn_fifo_control_block_t *>(base);
 
-    for (auto i = 0; i <= EVTCHN_FIFO_PRIORITY_MIN; i++) {
-        m_queues[i].priority = i;
+    for (auto i = 0U; i <= EVTCHN_FIFO_PRIORITY_MIN; i++) {
+        m_queues[i].priority = gsl::narrow_cast<uint8_t>(i);
         m_queues[i].head = &m_ctl_blk->head[i];
     }
 }
@@ -222,7 +222,6 @@ evtchn_op::set_pending(chan_t *chan)
         return;
     }
 
-    const auto was_pending = this->word_test_and_set_pending(new_word);
     if (this->word_is_masked(new_word) || this->word_is_linked(new_word)) {
         return;
     }
@@ -349,7 +348,7 @@ evtchn_op::make_chan_page(port_t port)
 
     auto page = make_page<chan_t>();
 
-    for (auto i = 0; i < chans_per_page; i++) {
+    for (auto i = 0U; i < chans_per_page; i++) {
         auto chan = &page.get()[i];
 
         chan->set_state(evtchn::state_free);
@@ -374,7 +373,6 @@ evtchn_op::make_word_page(gsl::not_null<evtchn_expand_array_t *> expand)
 {
     expects(m_event_words.size() < m_event_words.capacity());
 
-    auto prev = m_allocated_words;
     auto addr = expand->array_gfn << ::x64::pt::page_shift;
     auto page = m_vcpu->map_gpa_4k<word_t>(addr);
 

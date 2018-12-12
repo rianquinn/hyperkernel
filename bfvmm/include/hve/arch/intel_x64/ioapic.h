@@ -19,9 +19,10 @@
 #ifndef IOAPIC_INTEL_X64_HYPERKERNEL_H
 #define IOAPIC_INTEL_X64_HYPERKERNEL_H
 
-#include "../../../../../include/gpa_layout.h"
-#include <bfvmm/memory_manager/memory_manager.h>
+#include <bfgpalayout.h>
+
 #include <eapis/hve/arch/intel_x64/ioapic.h>
+#include <bfvmm/memory_manager/memory_manager.h>
 
 // -----------------------------------------------------------------------------
 // Exports

@@ -20,9 +20,10 @@
 #define GNTTABOP_INTEL_X64_HYPERKERNEL_H
 
 #include "../base.h"
-#include "public/grant_table.h"
-#include "public/memory.h"
 #include "xen_op.h"
+
+#include <xen/public/grant_table.h>
+#include <xen/public/memory.h>
 
 #include <eapis/hve/arch/x64/unmapper.h>
 #include <bfmath.h>
@@ -99,7 +100,7 @@ private:
 
     vcpu *m_vcpu{};
     xen_op_handler *m_xen_op{};
-    uint64_t m_version{};
+    uint32_t m_version{};
 
     std::vector<page_ptr<shared_entry_t>> m_shared_gnttab;
 

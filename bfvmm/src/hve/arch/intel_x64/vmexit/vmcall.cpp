@@ -17,7 +17,6 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 #include <hve/arch/intel_x64/vcpu.h>
-#include <hve/arch/intel_x64/fault.h>
 #include <hve/arch/intel_x64/vmexit/vmcall.h>
 
 namespace hyperkernel::intel_x64
@@ -49,6 +48,35 @@ vmcall_handler::add_handler(
 // Handlers
 // -----------------------------------------------------------------------------
 
+static bool
+vmcall_error(gsl::not_null<vcpu *> vcpu, const std::string &str)
+{
+    bfdebug_transaction(0, [&](std::string * msg) {
+
+        bferror_lnbr(0, msg);
+        bferror_info(0, ("vmcall error: " + str).c_str(), msg);
+        bferror_brk1(0, msg);
+
+        if ((vcpu->rax() & 0xFFFF000000000000) == 0xBF5C000000000000) {
+            bferror_subnhex(0, "rax", vcpu->rax(), msg);
+            bferror_subnhex(0, "rbx", vcpu->rbx(), msg);
+            bferror_subnhex(0, "rcx", vcpu->rcx(), msg);
+            bferror_subnhex(0, "rdx", vcpu->rdx(), msg);
+        }
+        else {
+            bferror_subnhex(0, "rax", vcpu->rax(), msg);
+            bferror_subnhex(0, "rdi", vcpu->rdi(), msg);
+        }
+    });
+
+    if (vcpu->is_domU()) {
+        vcpu->halt(str);
+    }
+
+    vcpu->set_rax(FAILURE);
+    return true;
+}
+
 bool
 vmcall_handler::handle(gsl::not_null<vcpu_t *> vcpu)
 {
@@ -58,11 +86,6 @@ vmcall_handler::handle(gsl::not_null<vcpu_t *> vcpu)
 
     vcpu->advance();
 
-    if (vcpu->id() > 0x3) {
-        bfdebug_ndec(0, "vmcall rax", vcpu->rax());
-        bfdebug_ndec(0, "vmcall rdi", vcpu->rdi());
-    }
-
     try {
         for (const auto &d : m_handlers) {
             if (d(m_vcpu)) {
@@ -71,12 +94,10 @@ vmcall_handler::handle(gsl::not_null<vcpu_t *> vcpu)
         }
     }
     catchall({
-        fault(vcpu, "vmcall_handler: vmcall failed");
-        return true;
+        return vmcall_error(m_vcpu, "vmcall threw exception");
     })
 
-    fault(vcpu, "vmcall_handler: no registered handler");
-    return true;
+    return vmcall_error(m_vcpu, "unknown vmcall");
 }
 
 }

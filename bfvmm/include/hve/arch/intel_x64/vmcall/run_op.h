@@ -16,8 +16,8 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
-#ifndef VMCALL_BF86_INTEL_X64_HYPERKERNEL_H
-#define VMCALL_BF86_INTEL_X64_HYPERKERNEL_H
+#ifndef VMCALL_RUN_INTEL_X64_HYPERKERNEL_H
+#define VMCALL_RUN_INTEL_X64_HYPERKERNEL_H
 
 #include "../base.h"
 
@@ -46,11 +46,11 @@ namespace hyperkernel::intel_x64
 
 class vcpu;
 
-class EXPORT_HYPERKERNEL_HVE vmcall_bf86_op_handler
+class EXPORT_HYPERKERNEL_HVE vmcall_run_op_handler
 {
 public:
 
-    vmcall_bf86_op_handler(
+    vmcall_run_op_handler(
         gsl::not_null<vcpu *> vcpu);
 
     /// Destructor
@@ -58,28 +58,26 @@ public:
     /// @expects
     /// @ensures
     ///
-    ~vmcall_bf86_op_handler() = default;
+    ~vmcall_run_op_handler() = default;
 
 private:
-
-    void bf86_op__emulate_outb(gsl::not_null<vcpu *> vcpu);
-    void bf86_op__emulate_hlt(gsl::not_null<vcpu *> vcpu);
 
     bool dispatch(gsl::not_null<vcpu *> vcpu);
 
 private:
 
     vcpu *m_vcpu;
+    vcpu *m_child_vcpu;
 
 public:
 
     /// @cond
 
-    vmcall_bf86_op_handler(vmcall_bf86_op_handler &&) = default;
-    vmcall_bf86_op_handler &operator=(vmcall_bf86_op_handler &&) = default;
+    vmcall_run_op_handler(vmcall_run_op_handler &&) = default;
+    vmcall_run_op_handler &operator=(vmcall_run_op_handler &&) = default;
 
-    vmcall_bf86_op_handler(const vmcall_bf86_op_handler &) = delete;
-    vmcall_bf86_op_handler &operator=(const vmcall_bf86_op_handler &) = delete;
+    vmcall_run_op_handler(const vmcall_run_op_handler &) = delete;
+    vmcall_run_op_handler &operator=(const vmcall_run_op_handler &) = delete;
 
     /// @endcond
 };

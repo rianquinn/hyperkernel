@@ -35,7 +35,7 @@
 extern "C" {
 #endif
 
-void _pause(void) NOEXCEPT;
+uint32_t _cpuid_eax(uint32_t val) NOEXCEPT;
 uint64_t _vmcall(uint64_t r1, uint64_t r2, uint64_t r3, uint64_t r4) NOEXCEPT;
 
 #ifdef __cplusplus
@@ -52,14 +52,15 @@ uint64_t _vmcall(uint64_t r1, uint64_t r2, uint64_t r3, uint64_t r4) NOEXCEPT;
 #define INVALID_DOMAINID 0xFFFFFFFFFFFFFFFF
 #define INVALID_VCPUID 0xFFFFFFFFFFFFFFFF
 
+#define SELF 0x7FF0
+
 // -----------------------------------------------------------------------------
 // Opcodes
 // -----------------------------------------------------------------------------
 
-#define __enum_bf86_op 0xBF86000000000100
 #define __enum_domain_op 0xBF5C000000000100
-#define __enum_vcpu_op 0xBF5C000000000200
-#define __enum_xen_op 0xBF5C000000000300
+#define __enum_run_op 0xBF5C000000000200
+#define __enum_vcpu_op 0xBF5C000000000300
 
 // -----------------------------------------------------------------------------
 // Domain Operations
@@ -67,29 +68,31 @@ uint64_t _vmcall(uint64_t r1, uint64_t r2, uint64_t r3, uint64_t r4) NOEXCEPT;
 
 #define __enum_domain_op__create_domain 0x100
 #define __enum_domain_op__destroy_domain 0x101
-#define __enum_domain_op__map_gpa 0x110
-#define __enum_domain_op__add_e820_entry 0x111
+#define __enum_domain_op__share_page 0x110
+#define __enum_domain_op__add_e820_entry 0x120
+#define __enum_domain_op__set_entry 0x130
+#define __enum_domain_op__set_pt_uart 0x140
 
 #define MAP_RO 1
 #define MAP_RW 4
 #define MAP_RWE 6
 
-typedef struct {
-    domainid_t domainid;
-    uint64_t gva;
-    uint64_t gpa;
+struct __domain_op__share_page_arg_t {
+    domainid_t foreign_domainid;
+    uint64_t self_gpa;
+    uint64_t foreign_gpa;
     uint64_t type;
-} __domain_op__map_gpa_arg_t;
+};
 
-typedef struct {
+struct __domain_op__add_e820_entry_arg_t {
     domainid_t domainid;
     uint64_t addr;
     uint64_t size;
     uint32_t type;
-} __domain_op__add_e820_entry_arg_t;
+};
 
 static inline domainid_t
-__domain_op__create_domain()
+__domain_op__create_domain(void)
 {
     return _vmcall(
         __enum_domain_op,
@@ -100,12 +103,12 @@ __domain_op__create_domain()
 }
 
 static inline status_t
-__domain_op__destroy_domain(domainid_t domainid)
+__domain_op__destroy_domain(domainid_t foreign_domainid)
 {
     status_t ret = _vmcall(
         __enum_domain_op,
         __enum_domain_op__destroy_domain,
-        domainid,
+        foreign_domainid,
         0
     );
 
@@ -113,16 +116,18 @@ __domain_op__destroy_domain(domainid_t domainid)
 }
 
 static inline status_t
-__domain_op__map_gpa(
-    domainid_t domainid, uint64_t gva, uint64_t gpa, uint64_t type)
+__domain_op__share_page(
+    domainid_t foreign_domainid, uint64_t self_gpa, uint64_t foreign_gpa, uint64_t type)
 {
-    __domain_op__map_gpa_arg_t arg = {
-        domainid, gva, gpa, type
-    };
+    struct __domain_op__share_page_arg_t arg;
+    arg.foreign_domainid = foreign_domainid;
+    arg.self_gpa = self_gpa;
+    arg.foreign_gpa = foreign_gpa;
+    arg.type = type;
 
     status_t ret = _vmcall(
         __enum_domain_op,
-        __enum_domain_op__map_gpa,
+        __enum_domain_op__share_page,
         bfrcast(uint64_t, &arg),
         0
     );
@@ -134,9 +139,11 @@ static inline status_t
 __domain_op__add_e820_entry(
     domainid_t domainid, uint64_t addr, uint64_t size, uint32_t type)
 {
-    __domain_op__add_e820_entry_arg_t arg = {
-        domainid, addr, size, type
-    };
+    struct __domain_op__add_e820_entry_arg_t arg;
+    arg.domainid = domainid;
+    arg.addr = addr;
+    arg.size = size;
+    arg.type = type;
 
     status_t ret = _vmcall(
         __enum_domain_op,
@@ -148,20 +155,60 @@ __domain_op__add_e820_entry(
     return ret == 0 ? SUCCESS : FAILURE;
 }
 
+static inline status_t
+__domain_op__set_entry(domainid_t foreign_domainid, uint64_t gpa)
+{
+    status_t ret = _vmcall(
+        __enum_domain_op,
+        __enum_domain_op__set_entry,
+        foreign_domainid,
+        gpa
+    );
+
+    return ret == 0 ? SUCCESS : FAILURE;
+}
+
+static inline status_t
+__domain_op__set_pt_uart(domainid_t foreign_domainid, uint64_t uart)
+{
+    status_t ret = _vmcall(
+        __enum_domain_op,
+        __enum_domain_op__set_pt_uart,
+        foreign_domainid,
+        uart
+    );
+
+    return ret == 0 ? SUCCESS : FAILURE;
+}
+
+// -----------------------------------------------------------------------------
+// Run Operations
+// -----------------------------------------------------------------------------
+
+#define __enum_run_op__hlt 0x0
+#define __enum_run_op__fault 0x1
+#define __enum_run_op__resume_after_interrupt 0x2
+#define __enum_run_op__yield 0x3
+
+#define run_op_ret(a) ((0x000000000000000FULL & a) >> 0)
+#define run_op_arg(a) ((0xFFFFFFFFFFFFFFF0ULL & a) >> 4)
+
+static inline vcpuid_t
+__run_op(vcpuid_t vcpuid, uint64_t arg1, uint64_t arg2)
+{
+    return _vmcall(
+        __enum_run_op, vcpuid, arg1, arg2
+    );
+}
+
 // -----------------------------------------------------------------------------
 // vCPU Operations
 // -----------------------------------------------------------------------------
 
 #define __enum_vcpu_op__create_vcpu 0x100
 #define __enum_vcpu_op__run_vcpu 0x101
-#define __enum_vcpu_op__hlt_vcpu 0x102
+#define __enum_vcpu_op__kill_vcpu 0x102
 #define __enum_vcpu_op__destroy_vcpu 0x103
-#define __enum_vcpu_op__set_rip 0x110
-#define __enum_vcpu_op__set_rbx 0x111
-
-#define VCPU_OP__RUN_CONTINUE 0xBF01LL
-#define VCPU_OP__RUN_SLEEP 0xBF02
-#define VCPU_OP__SLEEP_USEC 0xFFFFFFFFFFFF0000ULL
 
 static inline vcpuid_t
 __vcpu_op__create_vcpu(domainid_t domainid)
@@ -175,22 +222,11 @@ __vcpu_op__create_vcpu(domainid_t domainid)
 }
 
 static inline status_t
-__vcpu_op__run_vcpu(vcpuid_t vcpuid)
+__vcpu_op__kill_vcpu(vcpuid_t vcpuid)
 {
     return _vmcall(
         __enum_vcpu_op,
-        __enum_vcpu_op__run_vcpu,
-        vcpuid,
-        0
-    );
-}
-
-static inline status_t
-__vcpu_op__hlt_vcpu(vcpuid_t vcpuid)
-{
-    return _vmcall(
-        __enum_vcpu_op,
-        __enum_vcpu_op__hlt_vcpu,
+        __enum_vcpu_op__kill_vcpu,
         vcpuid,
         0
     );
@@ -203,57 +239,6 @@ __vcpu_op__destroy_vcpu(vcpuid_t vcpuid)
         __enum_vcpu_op,
         __enum_vcpu_op__destroy_vcpu,
         vcpuid,
-        0
-    );
-}
-
-static inline status_t
-__vcpu_op__set_rip(vcpuid_t vcpuid, uint64_t rip)
-{
-    return _vmcall(
-        __enum_vcpu_op,
-        __enum_vcpu_op__set_rip,
-        vcpuid,
-        rip
-    );
-}
-
-static inline status_t
-__vcpu_op__set_rbx(vcpuid_t vcpuid, uint64_t rbx)
-{
-    return _vmcall(
-        __enum_vcpu_op,
-        __enum_vcpu_op__set_rbx,
-        vcpuid,
-        rbx
-    );
-}
-
-// -----------------------------------------------------------------------------
-// Bareflank x86 Instruction Emulation Operations
-// -----------------------------------------------------------------------------
-
-#define __enum_bf86_op__emulate_outb 0x6E
-#define __enum_bf86_op__emulate_hlt 0xF4
-
-static inline status_t
-__bf86_op__emulate_outb(char byte)
-{
-    return _vmcall(
-        __enum_bf86_op,
-        __enum_bf86_op__emulate_outb,
-        byte,
-        0
-    );
-}
-
-static inline status_t
-__bf86_op__emulate_hlt()
-{
-    return _vmcall(
-        __enum_bf86_op,
-        __enum_bf86_op__emulate_hlt,
-        0,
         0
     );
 }

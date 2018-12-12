@@ -23,7 +23,8 @@
 #include <atomic>
 
 #include "../base.h"
-#include "public/event_channel.h"
+
+#include <xen/public/event_channel.h>
 #include "evtchn.h"
 #include "xen_op.h"
 

@@ -23,19 +23,76 @@
 #include <linux/miscdevice.h>
 
 #include <common.h>
-#include <builderinterface.h>
+#include <bfbuilderinterface.h>
 
 #include <bfdebug.h>
 #include <bftypes.h>
 #include <bfconstants.h>
 #include <bfplatform.h>
 
+#define MAX_VMS 0x1000
+struct vm_t g_vms[MAX_VMS] = {0};
+
 /* -------------------------------------------------------------------------- */
-/* Global                                                                     */
+/* VM Helpers                                                                 */
 /* -------------------------------------------------------------------------- */
 
-static uint64_t g_elf_size = 0;
-static uint64_t g_ram_size = 0;
+DEFINE_MUTEX(g_vm_mutex);
+
+static struct vm_t *
+acquire_vm(void)
+{
+    int64_t i;
+    struct vm_t *vm = 0;
+
+    mutex_lock(&g_vm_mutex);
+
+    for (i = 0; i < MAX_VMS; i++) {
+        vm = &g_vms[i];
+        if (vm->used == 0) {
+            break;
+        }
+    }
+
+    if (i == MAX_VMS) {
+        BFALERT("MAX_VMS reached. No more VMs can be created\n");
+        goto done;
+    }
+
+    platform_memset(vm, 0, sizeof(struct vm_t));
+    vm->used = 1;
+
+done:
+
+    mutex_unlock(&g_vm_mutex);
+    return vm;
+}
+
+static struct vm_t *
+get_vm(domainid_t domainid)
+{
+    int64_t i;
+    struct vm_t *vm = 0;
+
+    mutex_lock(&g_vm_mutex);
+
+    for (i = 0; i < MAX_VMS; i++) {
+        vm = &g_vms[i];
+        if (vm->used == 1 && vm->domainid == domainid) {
+            break;
+        }
+    }
+
+    if (i == MAX_VMS) {
+        BFALERT("MAX_VMS reached. Could not locate VM\n");
+        goto done;
+    }
+
+done:
+
+    mutex_unlock(&g_vm_mutex);
+    return vm;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Misc Device                                                                */
@@ -44,9 +101,6 @@ static uint64_t g_ram_size = 0;
 static int
 dev_open(struct inode *inode, struct file *file)
 {
-    (void) inode;
-    (void) file;
-
     BFDEBUG("dev_open succeeded\n");
     return 0;
 }
@@ -54,88 +108,114 @@ dev_open(struct inode *inode, struct file *file)
 static int
 dev_release(struct inode *inode, struct file *file)
 {
-    (void) inode;
-    (void) file;
-
     BFDEBUG("dev_release succeeded\n");
     return 0;
 }
 
 static long
-ioctl_load_elf(const char *file)
+ioctl_create_from_elf(struct create_from_elf_args *args)
 {
-    char *buf;
     int64_t ret;
+    struct create_from_elf_args kern_args;
 
-    buf = platform_alloc_rw(g_elf_size);
-    if (buf == NULL) {
-        BFALERT("IOCTL_ADD_MODULE: failed to allocate memory for the module\n");
+    void *file = 0;
+    void *cmdl = 0;
+
+    ret = copy_from_user(
+        &kern_args, args, sizeof(struct create_from_elf_args));
+    if (ret != 0) {
+        BFALERT("IOCTL_CREATE_FROM_ELF: failed to copy args from userspace\n");
         return BF_IOCTL_FAILURE;
     }
 
-    ret = copy_from_user(buf, file, g_elf_size);
-    if (ret != 0) {
-        BFALERT("IOCTL_ADD_MODULE: failed to copy memory from userspace\n");
-        goto failed;
+    if (kern_args.file_size != 0) {
+        file = platform_alloc_rw(kern_args.file_size);
+        if (file == NULL) {
+            BFALERT("IOCTL_CREATE_FROM_ELF: failed to allocate memory for file\n");
+            goto failed;
+        }
+
+        ret = copy_from_user(
+            file, kern_args.file, kern_args.file_size);
+        if (ret != 0) {
+            BFALERT("IOCTL_CREATE_FROM_ELF: failed to copy file from userspace\n");
+            goto failed;
+        }
+
+        kern_args.file = file;
     }
 
-/**
-    ret = common_add_module(buf, g_elf_size);
+    if (kern_args.cmdl_size != 0) {
+        cmdl = platform_alloc_rw(kern_args.cmdl_size);
+        if (cmdl == NULL) {
+            BFALERT("IOCTL_CREATE_FROM_ELF: failed to allocate memory for file\n");
+            goto failed;
+        }
+
+        ret = copy_from_user(
+            cmdl, kern_args.cmdl, kern_args.cmdl_size);
+        if (ret != 0) {
+            BFALERT("IOCTL_CREATE_FROM_ELF: failed to copy cmdl from userspace\n");
+            goto failed;
+        }
+
+        kern_args.cmdl = cmdl;
+    }
+
+    ret = common_create_from_elf(acquire_vm(), &kern_args);
     if (ret != BF_SUCCESS) {
-        BFALERT("IOCTL_ADD_MODULE: common_add_module failed: %p - %s\n", \
-                (void *)ret, ec_to_str(ret));
+        BFDEBUG("common_create_from_elf failed: %llx\n", ret);
         goto failed;
     }
-*/
 
-    BFDEBUG("IOCTL_ADD_MODULE: succeeded\n");
+    kern_args.file = 0;
+    kern_args.cmdl = 0;
+
+    ret = copy_to_user(
+        args, &kern_args, sizeof(struct create_from_elf_args));
+    if (ret != 0) {
+        BFALERT("IOCTL_CREATE_FROM_ELF: failed to copy args to userspace\n");
+        common_destroy(get_vm(kern_args.domainid));
+        goto failed;
+    }
+
+    platform_free_rw(file, kern_args.file_size);
+    platform_free_rw(cmdl, kern_args.cmdl_size);
+
+    BFDEBUG("IOCTL_CREATE_FROM_ELF: succeeded\n");
     return BF_IOCTL_SUCCESS;
 
 failed:
 
-    platform_free_rw(buf, g_elf_size);
+    kern_args.file = 0;
+    kern_args.cmdl = 0;
 
-    BFALERT("IOCTL_ADD_MODULE: failed\n");
+    platform_free_rw(file, kern_args.file_size);
+    platform_free_rw(cmdl, kern_args.cmdl_size);
+
+    BFALERT("IOCTL_CREATE_FROM_ELF: failed\n");
     return BF_IOCTL_FAILURE;
 }
 
 static long
-ioctl_load_elf_size(uint64_t *len)
+ioctl_destroy(domainid_t *args)
 {
     int64_t ret;
+    domainid_t domainid;
 
-    if (len == 0) {
-        BFALERT("IOCTL_LOAD_ELF_SIZE: failed with len == NULL\n");
-        return BF_IOCTL_FAILURE;
-    }
-
-    ret = copy_from_user(&g_elf_size, len, sizeof(uint64_t));
+    ret = copy_from_user(&domainid, args, sizeof(domainid_t));
     if (ret != 0) {
-        BFALERT("IOCTL_LOAD_ELF_SIZE: failed to copy memory from userspace\n");
+        BFALERT("IOCTL_DESTROY: failed to copy args from userspace\n");
         return BF_IOCTL_FAILURE;
     }
 
-    BFDEBUG("IOCTL_LOAD_ELF_SIZE: succeeded\n");
-    return BF_IOCTL_SUCCESS;
-}
-
-static long
-ioctl_load_ram_size(uint64_t *len)
-{
-    int64_t ret;
-
-    if (len == 0) {
-        BFALERT("IOCTL_LOAD_RAM_SIZE: failed with len == NULL\n");
+    ret = common_destroy(get_vm(domainid));
+    if (ret != BF_SUCCESS) {
+        BFDEBUG("common_destroy failed: %llx\n", ret);
         return BF_IOCTL_FAILURE;
     }
 
-    ret = copy_from_user(&g_ram_size, len, sizeof(uint64_t));
-    if (ret != 0) {
-        BFALERT("IOCTL_LOAD_RAM_SIZE: failed to copy memory from userspace\n");
-        return BF_IOCTL_FAILURE;
-    }
-
-    BFDEBUG("IOCTL_LOAD_RAM_SIZE: succeeded\n");
+    BFDEBUG("IOCTL_DESTROY: succeeded\n");
     return BF_IOCTL_SUCCESS;
 }
 
@@ -143,17 +223,12 @@ static long
 dev_unlocked_ioctl(
     struct file *file, unsigned int cmd, unsigned long arg)
 {
-    (void) file;
-
     switch (cmd) {
-        case IOCTL_LOAD_ELF:
-            return ioctl_load_elf((char *)arg);
+        case IOCTL_CREATE_FROM_ELF_CMD:
+            return ioctl_create_from_elf((struct create_from_elf_args *)arg);
 
-        case IOCTL_LOAD_ELF_SIZE:
-            return ioctl_load_elf_size((uint64_t *)arg);
-
-        case IOCTL_LOAD_RAM_SIZE:
-            return ioctl_load_ram_size((uint64_t *)arg);
+        case IOCTL_DESTROY_CMD:
+            return ioctl_destroy((domainid_t *)arg);
 
         default:
             return -EINVAL;
@@ -163,13 +238,14 @@ dev_unlocked_ioctl(
 static struct file_operations fops = {
     .open = dev_open,
     .release = dev_release,
-    .unlocked_ioctl = dev_unlocked_ioctl,
+    .unlocked_ioctl = dev_unlocked_ioctl
 };
 
 static struct miscdevice builder_dev = {
-    MISC_DYNAMIC_MINOR,
-    BUILDER_NAME,
-    &fops
+    .minor = MISC_DYNAMIC_MINOR,
+    .name = BUILDER_NAME,
+    .fops = &fops,
+    .mode = 0666
 };
 
 /* -------------------------------------------------------------------------- */
@@ -179,6 +255,8 @@ static struct miscdevice builder_dev = {
 int
 dev_init(void)
 {
+    mutex_init(&g_vm_mutex);
+
     if (misc_register(&builder_dev) != 0) {
         BFALERT("misc_register failed\n");
         return -EPERM;

@@ -22,12 +22,11 @@
 #include <queue>
 
 #include "vmexit/external_interrupt.h"
-#include "vmexit/fault.h"
 #include "vmexit/vmcall.h"
 
 #include "vmcall/domain_op.h"
+#include "vmcall/run_op.h"
 #include "vmcall/vcpu_op.h"
-#include "vmcall/bf86_op.h"
 
 #include "xen/xen_op.h"
 
@@ -174,38 +173,41 @@ public:
     ///
     VIRTUAL vcpu *parent_vcpu() const;
 
-    /// Return Success
+    /// Return (Hlt)
     ///
     /// Return to the parent vCPU (i.e. resume the parent), and tell the parent
-    /// to stop the guest vCPU and report success
+    /// to stop the guest vCPU.
     ///
     /// @expects
     /// @ensures
     ///
-    VIRTUAL void return_success();
+    VIRTUAL void return_hlt();
 
-    /// Return Failure
+    /// Return (Fault)
     ///
     /// Return to the parent vCPU (i.e. resume the parent), and tell the parent
-    /// to stop the guest and report failure
+    /// to stop the guest vCPU and report a fault.
     ///
     /// @expects
     /// @ensures
     ///
-    VIRTUAL void return_failure();
+    /// @param error the error code to return to the parent
+    ///
+    VIRTUAL void return_fault(uint64_t error = 0);
 
-    /// Return and Continue
+    /// Return (Resume After Interrupt)
     ///
     /// Return to the parent vCPU (i.e. resume the parent), and tell the parent
     /// to resume the guest as fast as possible. This is used to hand control
-    /// back to the parent, even though the guest is not finished yet.
+    /// back to the parent, even though the guest is not finished yet due to
+    /// an interrupt
     ///
     /// @expects
     /// @ensures
     ///
-    VIRTUAL void return_and_continue();
+    VIRTUAL void return_resume_after_interrupt();
 
-    /// Return and sleep
+    /// Return (Yield)
     ///
     /// Return to the parent vCPU (i.e. resume the parent), and tell the parent
     /// to put the child vCPU asleep for the specified number of microseconds
@@ -213,9 +215,9 @@ public:
     /// @expects
     /// @ensures
     ///
-    /// @param us the number of microseconds to sleep
+    /// @param usec the number of microseconds to sleep
     ///
-    VIRTUAL void return_and_sleep(uint64_t us);
+    VIRTUAL void return_yield(uint64_t usec);
 
     //--------------------------------------------------------------------------
     // Control
@@ -344,6 +346,20 @@ public:
     ///
     domain *dom();
 
+    //--------------------------------------------------------------------------
+    // Fault
+    //--------------------------------------------------------------------------
+
+    /// Halt the vCPU
+    ///
+    /// Halts the vCPU. The default action is to freeze the physical core
+    /// resulting in a hang, but this function can be overrided to provide
+    /// a safer action if possible.
+    ///
+    /// @param str the reason for the halt
+    ///
+    void halt(const std::string &str = {}) override;
+
 private:
 
     domain *m_domain{};
@@ -351,12 +367,11 @@ private:
     ioapic m_ioapic;
 
     external_interrupt_handler m_external_interrupt_handler;
-    fault_handler m_fault_handler;
     vmcall_handler m_vmcall_handler;
 
     vmcall_domain_op_handler m_vmcall_domain_op_handler;
+    vmcall_run_op_handler m_vmcall_run_op_handler;
     vmcall_vcpu_op_handler m_vmcall_vcpu_op_handler;
-    vmcall_bf86_op_handler m_vmcall_bf86_op_handler;
 
     xen_op_handler m_xen_op_handler;
 

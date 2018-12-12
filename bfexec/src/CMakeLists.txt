@@ -1,6 +1,6 @@
 #
-# Bareflank Hypervisor
-# Copyright (C) 2015 Assured Information Security, Inc.
+# Bareflank Hyperkernel
+# Copyright (C) 2018 Assured Information Security, Inc.
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
@@ -21,29 +21,40 @@ project(bfexec C CXX)
 
 include(${SOURCE_CMAKE_DIR}/project.cmake)
 init_project(
-    INCLUDES ${CMAKE_CURRENT_LIST_DIR}/../bfvmm/include
-    INCLUDES ${CMAKE_CURRENT_LIST_DIR}/../bfsdk/include
+    INCLUDES ${CMAKE_CURRENT_LIST_DIR}/../../bfvmm/include
+    INCLUDES ${CMAKE_CURRENT_LIST_DIR}/../../bfsdk/include
     INCLUDES ${CMAKE_CURRENT_LIST_DIR}/../include
-)
-
-list(APPEND SOURCES
-    src/main.c
 )
 
 if(BUILD_TARGET_OS STREQUAL "Linux")
     list(APPEND SOURCES
-        src/linux/platform.c
+        platform/linux/ioctl.cpp
+        platform/linux/ioctl_private.cpp
     )
+    include_directories(platform/linux/)
 elseif(BUILD_TARGET_OS STREQUAL "Windows")
     list(APPEND SOURCES
-        src/windows/platform.c
+        platform/windows/ioctl.cpp
+        platform/windows/ioctl_private.cpp
     )
+    include_directories(platform/windows/)
 else()
     message(FATAL_ERROR "Unsupported OS: ${BUILD_TARGET_OS}")
 endif()
 
+list(APPEND SOURCES
+    main.cpp
+)
+
 add_executable(bfexec ${SOURCES})
 target_link_static_libraries(bfexec bfintrinsics)
-target_link_libraries(bfexec pthread)
+
+if(CYGWIN OR WIN32)
+    target_link_libraries(bfexec setupapi)
+endif()
+
+if(UNIX)
+    target_link_libraries(bfexec pthread)
+endif()
 
 install(TARGETS bfexec DESTINATION bin)

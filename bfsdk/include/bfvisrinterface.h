@@ -17,11 +17,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#ifndef HYPERKERNEL_BFDRIVERINTERFACE_H
-#define HYPERKERNEL_BFDRIVERINTERFACE_H
+#ifndef BUILDERINTERFACE_H
+#define BUILDERINTERFACE_H
 
 #include <bftypes.h>
-#include <bfdebugringinterface.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,35 +30,49 @@ extern "C" {
 /* Common                                                                     */
 /* -------------------------------------------------------------------------- */
 
-#ifndef HKD_NAME
-#define HKD_NAME "hkd"
+#ifndef BUILDER_NAME
+#define BUILDER_NAME "bareflank_builder"
 #endif
 
-#ifndef HKD_MAGIC
-#define HKD_MAGIC 0xBF
+#ifndef BUILDER_MAJOR
+#define BUILDER_MAJOR 151
 #endif
 
-#ifndef HKD_DEVICETYPE
-#define HKD_DEVICETYPE 0xBEEF
+#ifndef BUILDER_DEVICETYPE
+#define BUILDER_DEVICETYPE 0xF00D
 #endif
 
-#define IOCTL_MMAP_CMD 0x801
-#define IOCTL_MUNMAP_CMD 0x802
+#define IOCTL_LOAD_ELF_CMD 0x801
 
 /**
- * struct hkd_mmap
+ * @struct load_elf_args
  *
- * @addr[out] the address of the mapping
+ * This structure is used to load and ELF file as a guest VM. This is the
+ * information the builder needs to create a domain and load its resources
+ * prior to execution.
  *
- * @size[in] the number of bytes to map
- * @prot[in] prot mask (see mmap(2))
- * @flags[in] flags (see mmap(2))
+ * @var load_elf_args::file
+ *     the ELF file to load
+ * @var load_elf_args::file_size
+ *     the length of the ELF file to load
+ * @var load_elf_args::cmdline
+ *     the command line arguments to pass to the Linux kernel on boot
+ * @var load_elf_args::cmdline_length
+ *     the length of the command line arguments
+ * @var load_elf_args::domainid
+ *     the domain ID of the VM to create and load
+ * @var load_elf_args::ram_size
+ *     the amount of RAM to give to the domain
  */
-struct hkd_mmap {
-    void *addr;
-    int size;
-    int prot;
-    int flags;
+struct load_elf_args {
+    const char *file;
+    uint64_t file_length;
+
+    const char *cmdline;
+    uint64_t cmdline_length;
+
+    uint64_t domainid;
+    uint64_t ram_size;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -68,8 +81,7 @@ struct hkd_mmap {
 
 #ifdef __linux__
 
-#define IOCTL_MMAP _IOWR(HKD_MAGIC, IOCTL_MMAP_CMD, struct hkd_mmap)
-#define IOCTL_MUNMAP _IOW(HKD_MAGIC, IOCTL_MUNMAP_CMD, struct hkd_mmap)
+#define IOCTL_LOAD_ELF _IOW(BUILDER_MAJOR, IOCTL_LOAD_ELF_CMD, struct load_elf_args *)
 
 #endif
 
@@ -82,7 +94,7 @@ struct hkd_mmap {
 #include <initguid.h>
 
 DEFINE_GUID(
-    GUID_DEVINTERFACE_bareflank,
+    GUID_DEVINTERFACE_builder,
     0x1d9c9218,
     0x3c88,
     0x4b81,
@@ -95,14 +107,7 @@ DEFINE_GUID(
     0xcb,
     0x44);
 
-#define IOCTL_ADD_MODULE CTL_CODE(BAREFLANK_DEVICETYPE, IOCTL_ADD_MODULE_CMD, METHOD_IN_DIRECT, FILE_WRITE_DATA)
-#define IOCTL_LOAD_VMM CTL_CODE(BAREFLANK_DEVICETYPE, IOCTL_LOAD_VMM_CMD, METHOD_BUFFERED, 0)
-#define IOCTL_UNLOAD_VMM CTL_CODE(BAREFLANK_DEVICETYPE, IOCTL_UNLOAD_VMM_CMD, METHOD_BUFFERED, 0)
-#define IOCTL_START_VMM CTL_CODE(BAREFLANK_DEVICETYPE, IOCTL_START_VMM_CMD, METHOD_BUFFERED, 0)
-#define IOCTL_STOP_VMM CTL_CODE(BAREFLANK_DEVICETYPE, IOCTL_STOP_VMM_CMD, METHOD_BUFFERED, 0)
-#define IOCTL_DUMP_VMM CTL_CODE(BAREFLANK_DEVICETYPE, IOCTL_DUMP_VMM_CMD, METHOD_OUT_DIRECT, FILE_READ_DATA)
-#define IOCTL_VMM_STATUS CTL_CODE(BAREFLANK_DEVICETYPE, IOCTL_VMM_STATUS_CMD, METHOD_BUFFERED, FILE_READ_DATA)
-#define IOCTL_SET_VCPUID CTL_CODE(BAREFLANK_DEVICETYPE, IOCTL_SET_VCPUID_CMD, METHOD_IN_DIRECT, FILE_WRITE_DATA)
+#define IOCTL_LOAD_ELF CTL_CODE(BUILDER_DEVICETYPE, IOCTL_LOAD_ELF_CMD, METHOD_IN_DIRECT, FILE_WRITE_DATA)
 
 #endif
 

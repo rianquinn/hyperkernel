@@ -1,8 +1,8 @@
 #!/bin/bash -e
 #
-# Bareflank Hyperkernel
+# Bareflank Hypervisor
 #
-# Copyright (C) 2018 Assured Information Security, Inc.
+# Copyright (C) 2015 Assured Information Security, Inc.
 # Author: Rian Quinn        <quinnr@ainfosec.com>
 # Author: Brendan Kerrigan  <kerriganb@ainfosec.com>
 #
@@ -23,17 +23,41 @@
 # $1 == CMAKE_SOURCE_DIR
 
 certmgr_10_0_00000_0="/cygdrive/c/Program Files (x86)/Windows Kits/10/bin/x64/certmgr"
+certmgr_10_0_17763_0="/cygdrive/c/Program Files (x86)/Windows Kits/10/bin/10.0.17763.0/x64/certmgr"
 certmgr_10_0_17134_0="/cygdrive/c/Program Files (x86)/Windows Kits/10/bin/10.0.17134.0/x64/certmgr"
+certmgr_10_0_16299_0="/cygdrive/c/Program Files (x86)/Windows Kits/10/bin/10.0.16299.0/x64/certmgr"
+certmgr_10_0_15063_0="/cygdrive/c/Program Files (x86)/Windows Kits/10/bin/10.0.15063.0/x64/certmgr"
+certmgr_10_0_14393_0="/cygdrive/c/Program Files (x86)/Windows Kits/10/bin/10.0.14393.0/x64/certmgr"
 
 find_certmgr() {
+
+    if [[ -f $certmgr_10_0_00000_0 ]]; then
+        certmgr=$certmgr_10_0_00000_0
+        return
+    fi
+
+    if [[ -f $certmgr_10_0_17763_0 ]]; then
+        certmgr=$certmgr_10_0_17763_0
+        return
+    fi
 
     if [[ -f $certmgr_10_0_17134_0 ]]; then
         certmgr=$certmgr_10_0_17134_0
         return
     fi
 
-    if [[ -f $certmgr_10_0_00000_0 ]]; then
-        certmgr=$certmgr_10_0_00000_0
+    if [[ -f $certmgr_10_0_16299_0 ]]; then
+        certmgr=$certmgr_10_0_16299_0
+        return
+    fi
+
+    if [[ -f $certmgr_10_0_15063_0 ]]; then
+        certmgr=$certmgr_10_0_15063_0
+        return
+    fi
+
+    if [[ -f $certmgr_10_0_14393_0 ]]; then
+        certmgr=$certmgr_10_0_14393_0
         return
     fi
 
@@ -44,14 +68,14 @@ find_certmgr() {
 case $(uname -s) in
 CYGWIN_NT*)
     find_certmgr
-    cd $1/src/platform/windows
-    >&2 eval "'$certmgr' /add x64/Release/bareflank.cer /s /r localMachine root"
-    >&2 eval "'$certmgr' /add x64/Release/bareflank.cer /s /r localMachine trustedpublisher"
-    >&2 /cygdrive/c/Program\ Files\ \(x86\)/Windows\ Kits/10/Tools/x64/devcon remove "ROOT\bareflank"
-    >&2 /cygdrive/c/Program\ Files\ \(x86\)/Windows\ Kits/10/Tools/x64/devcon install x64/Release/bareflank/bareflank.inf "ROOT\bareflank"
+    cd $1/bfdriver/builder/src/platform/windows
+    >&2 eval "'$certmgr' /add x64/Release/builder.cer /s /r localMachine root"
+    >&2 eval "'$certmgr' /add x64/Release/builder.cer /s /r localMachine trustedpublisher"
+    >&2 /cygdrive/c/Program\ Files\ \(x86\)/Windows\ Kits/10/Tools/x64/devcon remove "ROOT\builder"
+    >&2 /cygdrive/c/Program\ Files\ \(x86\)/Windows\ Kits/10/Tools/x64/devcon install x64/Release/builder/builder.inf "ROOT\builder"
     ;;
 Linux)
-    cd $1/src/platform/linux
+    cd $1/bfdriver/builder/src/platform/linux
     sudo make unload 1> /dev/null 2> /dev/null
     sudo make load 1> /dev/null 2> /dev/null
     ;;

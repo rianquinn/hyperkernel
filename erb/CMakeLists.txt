@@ -18,8 +18,8 @@
 
 add_custom_target_category("Guest Image \\(${ERB_IMAGE}\\)")
 
-include_dependency(HK_DEPEND_DIR xtools)
-include_dependency(HK_DEPEND_DIR buildroot)
+include_dependency(HK_SOURCE_DEPENDS_DIR xtools)
+include_dependency(HK_SOURCE_DEPENDS_DIR buildroot)
 
 # ------------------------------------------------------------------------------
 # Top-level targets
@@ -46,7 +46,7 @@ ExternalProject_Add_Step(${BR_TARGET} reconfig-overrides
         -DFILE_CONFIG_IN=${BR_OVERRIDE_IN}
         -DFILE_CONFIG_OUT=${BR_OVERRIDE_OUT}
         -DERB_LINUX_OVERRIDE=${ERB_LINUX_OVERRIDE}
-        -P ${HK_CMAKE_DIR}/config/reconfig.cmake
+        -P ${HK_SOURCE_CMAKE_DIR}/config/reconfig.cmake
     DEPENDEES configure
     DEPENDS ${BR_OVERRIDE_IN}
     COMMENT "Re-configuring override sources"
@@ -57,7 +57,7 @@ ExternalProject_Add_Step(${BR_TARGET} reconfig-linux
         -DFILE_CONFIG_IN=${BR_CONFIG_LINUX_IN}
         -DFILE_CONFIG_OUT=${BR_CONFIG_LINUX_OUT}
         -DERB_IMAGE=${ERB_IMAGE}
-        -P ${HK_CMAKE_DIR}/config/reconfig.cmake
+        -P ${HK_SOURCE_CMAKE_DIR}/config/reconfig.cmake
     DEPENDEES reconfig-overrides
     DEPENDS ${BR_CONFIG_LINUX_IN}
     COMMENT "Re-configuring linux"
@@ -74,7 +74,7 @@ ExternalProject_Add_Step(${BR_TARGET} reconfig-buildroot
         -DERB_TOOLS=${ERB_TOOLS}
         -DERB_ROOTFS_OVERLAY=${ERB_ROOTFS_OVERLAY}
         -DERB_FAKEROOT_HOOKS=${ERB_FAKEROOT_HOOKS}
-        -P ${HK_CMAKE_DIR}/config/reconfig.cmake
+        -P ${HK_SOURCE_CMAKE_DIR}/config/reconfig.cmake
     DEPENDEES reconfig-linux
     DEPENDERS build
     DEPENDS ${BR_CONFIG_IN}

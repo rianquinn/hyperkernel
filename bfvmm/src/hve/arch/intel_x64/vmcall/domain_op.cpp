@@ -50,35 +50,55 @@ vmcall_domain_op_handler::domain_op__create_domain(
 }
 
 void
-vmcall_domain_op_handler::domain_op__map_gpa(
+vmcall_domain_op_handler::domain_op__destroy_domain(
     gsl::not_null<vcpu *> vcpu)
 {
-        auto domain_op__map_gpa_arg =
-            vcpu->map_arg<__domain_op__map_gpa_arg_t>(vcpu->rcx());
-
     try {
-        //auto domain_op__map_gpa_arg =
-        //    vcpu->map_arg<__domain_op__map_gpa_arg_t>(vcpu->rcx());
+        if (vcpu->rcx() == self) {
+            throw std::runtime_error(
+                "domain_op__destroy_domain: self not supported");
+        }
+
+        g_dm->destroy(vcpu->rcx(), nullptr);
+        vcpu->set_rax(SUCCESS);
+    }
+    catchall({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
+void
+vmcall_domain_op_handler::domain_op__share_page(
+    gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        auto args =
+            vcpu->map_arg<__domain_op__share_page_arg_t>(vcpu->rcx());
+
+        if (args->foreign_domainid == self) {
+            throw std::runtime_error(
+                "domain_op__share_page: self not supported");
+        }
 
         auto [hpa, unused] =
-            vcpu->gva_to_hpa(domain_op__map_gpa_arg->gva);
+            vcpu->gpa_to_hpa(args->self_gpa);
 
-        switch(domain_op__map_gpa_arg->type) {
+        switch(args->type) {
             case MAP_RO:
-                get_domain(domain_op__map_gpa_arg->domainid)->map_4k_ro(
-                    domain_op__map_gpa_arg->gpa, hpa
+                get_domain(args->foreign_domainid)->map_4k_ro(
+                    args->foreign_gpa, hpa
                 );
                 break;
 
             case MAP_RW:
-                get_domain(domain_op__map_gpa_arg->domainid)->map_4k_rw(
-                    domain_op__map_gpa_arg->gpa, hpa
+                get_domain(args->foreign_domainid)->map_4k_rw(
+                    args->foreign_gpa, hpa
                 );
                 break;
 
             case MAP_RWE:
-                get_domain(domain_op__map_gpa_arg->domainid)->map_4k_rwe(
-                    domain_op__map_gpa_arg->gpa, hpa
+                get_domain(args->foreign_domainid)->map_4k_rwe(
+                    args->foreign_gpa, hpa
                 );
                 break;
 
@@ -89,9 +109,6 @@ vmcall_domain_op_handler::domain_op__map_gpa(
         vcpu->set_rax(SUCCESS);
     }
     catchall({
-        bfdebug_nhex(0, "map_gpa: gva", domain_op__map_gpa_arg->gva);
-        bfdebug_nhex(0, "map_gpa: gpa", domain_op__map_gpa_arg->gpa);
-
         vcpu->set_rax(FAILURE);
     })
 }
@@ -101,13 +118,11 @@ vmcall_domain_op_handler::domain_op__add_e820_entry(
     gsl::not_null<vcpu *> vcpu)
 {
     try {
-        auto domain_op__add_e820_entry_arg =
+        auto args =
             vcpu->map_arg<__domain_op__add_e820_entry_arg_t>(vcpu->rcx());
 
-        get_domain(domain_op__add_e820_entry_arg->domainid)->add_e820_entry({
-            domain_op__add_e820_entry_arg->addr,
-            domain_op__add_e820_entry_arg->size,
-            domain_op__add_e820_entry_arg->type
+        get_domain(args->domainid)->add_e820_entry({
+            args->addr, args->size, args->type
         });
 
         vcpu->set_rax(SUCCESS);
@@ -118,11 +133,37 @@ vmcall_domain_op_handler::domain_op__add_e820_entry(
 }
 
 void
-vmcall_domain_op_handler::domain_op__destroy_domain(
+vmcall_domain_op_handler::domain_op__set_entry(
     gsl::not_null<vcpu *> vcpu)
 {
     try {
-        g_dm->destroy(vcpu->rcx(), nullptr);
+        if (vcpu->rcx() == self) {
+            throw std::runtime_error(
+                "domain_op__set_entry: self not supported");
+        }
+
+        get_domain(vcpu->rcx())->set_entry(vcpu->rdx());
+        vcpu->set_rax(SUCCESS);
+    }
+    catchall({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
+void
+vmcall_domain_op_handler::domain_op__set_pt_uart(
+    gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        if (vcpu->rcx() == self) {
+            throw std::runtime_error(
+                "domain_op__set_pt_uart: self not supported");
+        }
+
+        get_domain(vcpu->rcx())->set_pt_uart(
+            gsl::narrow_cast<uint8_t>(vcpu->rdx())
+        );
+
         vcpu->set_rax(SUCCESS);
     }
     catchall({
@@ -143,16 +184,24 @@ vmcall_domain_op_handler::dispatch(
             this->domain_op__create_domain(vcpu);
             return true;
 
-        case __enum_domain_op__map_gpa:
-            this->domain_op__map_gpa(vcpu);
+        case __enum_domain_op__destroy_domain:
+            this->domain_op__destroy_domain(vcpu);
+            return true;
+
+        case __enum_domain_op__share_page:
+            this->domain_op__share_page(vcpu);
             return true;
 
         case __enum_domain_op__add_e820_entry:
             this->domain_op__add_e820_entry(vcpu);
             return true;
 
-        case __enum_domain_op__destroy_domain:
-            this->domain_op__destroy_domain(vcpu);
+        case __enum_domain_op__set_entry:
+            this->domain_op__set_entry(vcpu);
+            return true;
+
+        case __enum_domain_op__set_pt_uart:
+            this->domain_op__set_pt_uart(vcpu);
             return true;
 
         default:

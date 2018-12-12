@@ -236,6 +236,28 @@ public:
     ///
     void add_e820_entry(const e820_entry_t &entry);
 
+    /// Set Pass-Through UART
+    ///
+    /// If set, passes through a UART to the VM during each vCPU's
+    /// construction.
+    ///
+    /// @expects
+    /// @ensures
+    ///
+    /// @param uart the port of the serial device to pass through
+    ///
+    void set_pt_uart(uint8_t uart) noexcept;
+
+    /// Get Pass-Through UART
+    ///
+    /// @expects
+    /// @ensures
+    ///
+    /// @return returns the port of a pass-throughed UART on success,
+    ///     and 0 if no UART is set.
+    ///
+    uint8_t pt_uart() const noexcept;
+
 public:
 
     gsl::not_null<bfvmm::x64::gdt *> gdt()
@@ -272,15 +294,16 @@ private:
     bfvmm::x64::gdt m_gdt{512};
     bfvmm::x64::idt m_idt{256};
 
-    uintptr_t m_tss_phys;
-    uintptr_t m_gdt_phys;
-    uintptr_t m_idt_phys;
+    uint64_t m_tss_phys{};
+    uint64_t m_gdt_phys{};
+    uint64_t m_idt_phys{};
 
-    uintptr_t m_tss_virt;
-    uintptr_t m_gdt_virt;
-    uintptr_t m_idt_virt;
+    uint64_t m_tss_virt{};
+    uint64_t m_gdt_virt{};
+    uint64_t m_idt_virt{};
 
     std::vector<e820_entry_t> m_e820_map;
+    uint8_t m_pt_uart{};
 
     eapis::intel_x64::ept::mmap m_ept_map;
     eapis::intel_x64::vcpu_global_state_t m_vcpu_global_state;
