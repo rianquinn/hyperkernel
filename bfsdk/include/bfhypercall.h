@@ -77,19 +77,19 @@ uint64_t _vmcall(uint64_t r1, uint64_t r2, uint64_t r3, uint64_t r4) NOEXCEPT;
 #define MAP_RW 4
 #define MAP_RWE 6
 
-typedef struct {
+struct __domain_op__share_page_arg_t {
     domainid_t foreign_domainid;
     uint64_t self_gpa;
     uint64_t foreign_gpa;
     uint64_t type;
-} __domain_op__share_page_arg_t;
+};
 
-typedef struct {
+struct __domain_op__add_e820_entry_arg_t {
     domainid_t domainid;
     uint64_t addr;
     uint64_t size;
     uint32_t type;
-} __domain_op__add_e820_entry_arg_t;
+};
 
 static inline domainid_t
 __domain_op__create_domain(void)
@@ -119,9 +119,11 @@ static inline status_t
 __domain_op__share_page(
     domainid_t foreign_domainid, uint64_t self_gpa, uint64_t foreign_gpa, uint64_t type)
 {
-    __domain_op__share_page_arg_t arg = {
-        foreign_domainid, self_gpa, foreign_gpa, type
-    };
+    struct __domain_op__share_page_arg_t arg;
+    arg.foreign_domainid = foreign_domainid;
+    arg.self_gpa = self_gpa;
+    arg.foreign_gpa = foreign_gpa;
+    arg.type = type;
 
     status_t ret = _vmcall(
         __enum_domain_op,
@@ -137,9 +139,11 @@ static inline status_t
 __domain_op__add_e820_entry(
     domainid_t domainid, uint64_t addr, uint64_t size, uint32_t type)
 {
-    __domain_op__add_e820_entry_arg_t arg = {
-        domainid, addr, size, type
-    };
+    struct __domain_op__add_e820_entry_arg_t arg;
+    arg.domainid = domainid;
+    arg.addr = addr;
+    arg.size = size;
+    arg.type = type;
 
     status_t ret = _vmcall(
         __enum_domain_op,

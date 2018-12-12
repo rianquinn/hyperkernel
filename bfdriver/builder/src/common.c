@@ -71,7 +71,7 @@ donate_buffer(
     struct vm_t *vm, void *gva, uint64_t domain_gpa, uint64_t size, uint64_t type)
 {
     uint64_t i;
-    status_t ret;
+    status_t ret = SUCCESS;
 
     for (i = 0; i < size; i += BAREFLANK_PAGE_SIZE) {
         ret = donate_page(vm, (char *)gva + i, domain_gpa + i, type);
@@ -88,7 +88,7 @@ donate_page_to_page_range(
     struct vm_t *vm, void *gva, uint64_t domain_gpa, uint64_t size, uint64_t type)
 {
     uint64_t i;
-    status_t ret;
+    status_t ret = SUCCESS;
 
     for (i = 0; i < size; i += BAREFLANK_PAGE_SIZE) {
         ret = donate_page(vm, gva, domain_gpa + i, type);

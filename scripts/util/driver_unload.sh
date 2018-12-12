@@ -19,7 +19,7 @@
 
 case $(uname -s) in
 CYGWIN_NT*)
-    >&2 /cygdrive/c/Program\ Files\ \(x86\)/Windows\ Kits/10/Tools/x64/devcon remove "ROOT\bareflank"
+    >&2 /cygdrive/c/Program\ Files\ \(x86\)/Windows\ Kits/10/Tools/x64/devcon remove "ROOT\builder"
     ;;
 Linux)
     cd $1/bfdriver/builder/src/platform/linux

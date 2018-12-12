@@ -16,6 +16,13 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
+// TIDY_EXCLUSION=-cppcoreguidelines-pro-type-vararg
+//
+// Reason:
+//    The Linux APIs require the use of var-args, so this test has to be
+//    disabled.
+//
+
 #include <ioctl_private.h>
 
 #include <bfgsl.h>
@@ -39,7 +46,7 @@ bfm_ioctl_open()
     SP_INTERFACE_DEVICE_DATA ifInfo;
     ifInfo.cbSize = sizeof(SP_INTERFACE_DEVICE_DATA);
 
-    hDevInfo = SetupDiGetClassDevs(&GUID_DEVINTERFACE_bareflank, 0, 0, DIGCF_DEVICEINTERFACE | DIGCF_PRESENT);
+    hDevInfo = SetupDiGetClassDevs(&GUID_DEVINTERFACE_builder, 0, 0, DIGCF_DEVICEINTERFACE | DIGCF_PRESENT);
     if (hDevInfo == INVALID_HANDLE_VALUE) {
         return hDevInfo;
     }
@@ -48,7 +55,7 @@ bfm_ioctl_open()
         return INVALID_HANDLE_VALUE;
     }
 
-    if (SetupDiEnumDeviceInterfaces(hDevInfo, &devInfo, &(GUID_DEVINTERFACE_bareflank), 0, &ifInfo) == false) {
+    if (SetupDiEnumDeviceInterfaces(hDevInfo, &devInfo, &(GUID_DEVINTERFACE_builder), 0, &ifInfo) == false) {
         return INVALID_HANDLE_VALUE;
     }
 
@@ -87,39 +94,6 @@ bfm_ioctl_open()
 }
 
 int64_t
-bfm_send_ioctl(HANDLE fd, DWORD request)
-{
-    DWORD bytes = 0;
-    if (!DeviceIoControl(fd, request, NULL, 0, NULL, 0, &bytes, NULL)) {
-        return BF_IOCTL_FAILURE;
-    }
-
-    return 0;
-}
-
-int64_t
-bfm_read_ioctl(HANDLE fd, DWORD request, void *data, DWORD size)
-{
-    DWORD bytes = 0;
-    if (!DeviceIoControl(fd, request, NULL, 0, data, size, &bytes, NULL)) {
-        return BF_IOCTL_FAILURE;
-    }
-
-    return 0;
-}
-
-int64_t
-bfm_write_ioctl(HANDLE fd, DWORD request, const void *data, DWORD size)
-{
-    DWORD bytes = 0;
-    if (!DeviceIoControl(fd, request, const_cast<void *>(data), size, NULL, 0, &bytes, NULL)) {
-        return BF_IOCTL_FAILURE;
-    }
-
-    return 0;
-}
-
-int64_t
 bfm_read_write_ioctl(HANDLE fd, DWORD request, void *data, DWORD size)
 {
     DWORD bytes = 0;
@@ -134,94 +108,28 @@ bfm_read_write_ioctl(HANDLE fd, DWORD request, void *data, DWORD size)
 // Implementation
 // -----------------------------------------------------------------------------
 
-ioctl_private::ioctl_private() :
-    fd(INVALID_HANDLE_VALUE)
+ioctl_private::ioctl_private()
 {
+    if ((fd = bfm_ioctl_open()) == INVALID_HANDLE_VALUE) {
+        throw std::runtime_error("failed to open to builder");
+    }
 }
 
 ioctl_private::~ioctl_private()
+{ CloseHandle(fd); }
+
+void
+ioctl_private::call_ioctl_create_from_elf(create_from_elf_args &args)
 {
-    if (fd != INVALID_HANDLE_VALUE) {
-        CloseHandle(fd);
+    if (bfm_read_write_ioctl(fd, IOCTL_CREATE_FROM_ELF_CMD, &args, sizeof(create_from_elf_args)) < 0) {
+        throw std::runtime_error("ioctl failed: IOCTL_CREATE_FROM_ELF_CMD");
     }
 }
 
 void
-ioctl_private::open()
+ioctl_private::call_ioctl_destroy(domainid_t domainid)
 {
-    if ((fd = bfm_ioctl_open()) == INVALID_HANDLE_VALUE) {
-        throw std::runtime_error("failed to open to bfdriver");
+    if (bfm_read_write_ioctl(fd, IOCTL_DESTROY_CMD, &domainid, sizeof(domainid_t)) < 0) {
+        throw std::runtime_error("ioctl failed: IOCTL_DESTROY_CMD");
     }
 }
-
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wconversion"
-#pragma GCC diagnostic ignored "-Wsign-conversion"
-#endif
-
-void
-ioctl_private::call_ioctl_add_module(gsl::not_null<module_data_type> data, module_len_type len)
-{
-    expects(len > 0);
-
-    if (bfm_write_ioctl(fd, IOCTL_ADD_MODULE, data, gsl::narrow_cast<DWORD>(len)) == BF_IOCTL_FAILURE) {
-        throw std::runtime_error("ioctl failed: IOCTL_ADD_MODULE");
-    }
-}
-
-void
-ioctl_private::call_ioctl_load_vmm()
-{
-    if (bfm_send_ioctl(fd, IOCTL_LOAD_VMM) == BF_IOCTL_FAILURE) {
-        throw std::runtime_error("ioctl failed: IOCTL_LOAD_VMM");
-    }
-}
-
-void
-ioctl_private::call_ioctl_unload_vmm()
-{
-    if (bfm_send_ioctl(fd, IOCTL_UNLOAD_VMM) == BF_IOCTL_FAILURE) {
-        throw std::runtime_error("ioctl failed: IOCTL_UNLOAD_VMM");
-    }
-}
-
-void
-ioctl_private::call_ioctl_start_vmm()
-{
-    if (bfm_send_ioctl(fd, IOCTL_START_VMM) == BF_IOCTL_FAILURE) {
-        throw std::runtime_error("ioctl failed: IOCTL_START_VMM");
-    }
-}
-
-void
-ioctl_private::call_ioctl_stop_vmm()
-{
-    if (bfm_send_ioctl(fd, IOCTL_STOP_VMM) == BF_IOCTL_FAILURE) {
-        throw std::runtime_error("ioctl failed: IOCTL_STOP_VMM");
-    }
-}
-
-void
-ioctl_private::call_ioctl_dump_vmm(gsl::not_null<drr_pointer> drr, vcpuid_type vcpuid)
-{
-    if (bfm_write_ioctl(fd, IOCTL_SET_VCPUID, &vcpuid, sizeof(vcpuid)) == BF_IOCTL_FAILURE) {
-        throw std::runtime_error("ioctl failed: IOCTL_SET_VCPUID");
-    }
-
-    if (bfm_read_ioctl(fd, IOCTL_DUMP_VMM, drr, sizeof(*drr)) == BF_IOCTL_FAILURE) {
-        throw std::runtime_error("ioctl failed: IOCTL_DUMP_VMM");
-    }
-}
-
-void
-ioctl_private::call_ioctl_vmm_status(gsl::not_null<status_pointer> status)
-{
-    if (bfm_read_ioctl(fd, IOCTL_VMM_STATUS, status, sizeof(*status)) == BF_IOCTL_FAILURE) {
-        throw std::runtime_error("ioctl failed: IOCTL_VMM_STATUS");
-    }
-}
-
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif

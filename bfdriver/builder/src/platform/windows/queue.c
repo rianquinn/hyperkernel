@@ -23,6 +23,157 @@
 
 #include <driver.h>
 
+#include <common.h>
+#include <bfbuilderinterface.h>
+
+#include <bfdebug.h>
+#include <bftypes.h>
+#include <bfconstants.h>
+#include <bfplatform.h>
+
+#define MAX_VMS 0x1000
+struct vm_t g_vms[MAX_VMS] = {0};
+
+/* -------------------------------------------------------------------------- */
+/* VM Helpers                                                                 */
+/* -------------------------------------------------------------------------- */
+
+// DEFINE_MUTEX(g_vm_mutex);
+
+static struct vm_t *
+acquire_vm(void)
+{
+    int64_t i;
+    struct vm_t *vm = 0;
+
+    // mutex_lock(&g_vm_mutex);
+
+    for (i = 0; i < MAX_VMS; i++) {
+        vm = &g_vms[i];
+        if (vm->used == 0) {
+            break;
+        }
+    }
+
+    if (i == MAX_VMS) {
+        BFALERT("MAX_VMS reached. No more VMs can be created\n");
+        goto done;
+    }
+
+    platform_memset(vm, 0, sizeof(struct vm_t));
+    vm->used = 1;
+
+done:
+
+    // mutex_unlock(&g_vm_mutex);
+    return vm;
+}
+
+static struct vm_t *
+get_vm(domainid_t domainid)
+{
+    int64_t i;
+    struct vm_t *vm = 0;
+
+    // mutex_lock(&g_vm_mutex);
+
+    for (i = 0; i < MAX_VMS; i++) {
+        vm = &g_vms[i];
+        if (vm->used == 1 && vm->domainid == domainid) {
+            break;
+        }
+    }
+
+    if (i == MAX_VMS) {
+        BFALERT("MAX_VMS reached. Could not locate VM\n");
+        goto done;
+    }
+
+done:
+
+    // mutex_unlock(&g_vm_mutex);
+    return vm;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Queue Functions                                                            */
+/* -------------------------------------------------------------------------- */
+
+static long
+ioctl_create_from_elf(struct create_from_elf_args *args)
+{
+    int64_t ret;
+
+    void *file = 0;
+    void *cmdl = 0;
+
+    if (args->file_size != 0) {
+        file = platform_alloc_rw(args->file_size);
+        if (file == NULL) {
+            BFALERT("IOCTL_CREATE_FROM_ELF: failed to allocate memory for file\n");
+            goto failed;
+        }
+
+        platform_memcpy(file, args->file, args->file_size);
+        args->file = file;
+    }
+
+    if (args->cmdl_size != 0) {
+        cmdl = platform_alloc_rw(args->cmdl_size);
+        if (cmdl == NULL) {
+            BFALERT("IOCTL_CREATE_FROM_ELF: failed to allocate memory for file\n");
+            goto failed;
+        }
+
+        platform_memcpy(cmdl, args->cmdl, args->cmdl_size);
+        args->cmdl = cmdl;
+    }
+
+    ret = common_create_from_elf(acquire_vm(), args);
+    if (ret != BF_SUCCESS) {
+        BFDEBUG("common_create_from_elf failed: %llx\n", ret);
+        goto failed;
+    }
+
+    args->file = 0;
+    args->cmdl = 0;
+
+    platform_free_rw(file, args->file_size);
+    platform_free_rw(cmdl, args->cmdl_size);
+
+    BFDEBUG("IOCTL_CREATE_FROM_ELF: succeeded\n");
+    return BF_IOCTL_SUCCESS;
+
+failed:
+
+    args->file = 0;
+    args->cmdl = 0;
+
+    platform_free_rw(file, args->file_size);
+    platform_free_rw(cmdl, args->cmdl_size);
+
+    BFALERT("IOCTL_CREATE_FROM_ELF: failed\n");
+    return BF_IOCTL_FAILURE;
+}
+
+static long
+ioctl_destroy(domainid_t *args)
+{
+    int64_t ret;
+    domainid_t domainid;
+
+    platform_memcpy(&domainid, args, sizeof(domainid_t));
+
+    ret = common_destroy(get_vm(domainid));
+    if (ret != BF_SUCCESS) {
+        BFDEBUG("common_destroy failed: %llx\n", ret);
+        return BF_IOCTL_FAILURE;
+    }
+
+    BFDEBUG("IOCTL_DESTROY: succeeded\n");
+    return BF_IOCTL_SUCCESS;
+}
+
 NTSTATUS
 builderQueueInitialize(
     _In_ WDFDEVICE Device
@@ -44,8 +195,6 @@ builderQueueInitialize(
     if (!NT_SUCCESS(status)) {
         return status;
     }
-
-    common_init();
 
     BFDEBUG("builderQueueInitialize: success\n");
     return STATUS_SUCCESS;
@@ -87,8 +236,13 @@ builderEvtIoDeviceControl(
     }
 
     switch (IoControlCode) {
-        case IOCTL_ADD_MODULE:
-            ret = ioctl_add_module((char *)in, (int64_t)in_size);
+        case IOCTL_CREATE_FROM_ELF_CMD:
+            ret = ioctl_create_from_elf((struct create_from_elf_args *)in);
+            platform_memcpy(out, in, out_size);
+            break;
+
+        case IOCTL_DESTROY_CMD:
+            ret = ioctl_destroy((domainid_t *)in);
             break;
 
         default:

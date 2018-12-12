@@ -187,6 +187,9 @@ ioctl_create_from_elf(struct create_from_elf_args *args)
 
 failed:
 
+    kern_args.file = 0;
+    kern_args.cmdl = 0;
+
     platform_free_rw(file, kern_args.file_size);
     platform_free_rw(cmdl, kern_args.cmdl_size);
 

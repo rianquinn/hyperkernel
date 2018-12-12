@@ -27,32 +27,15 @@
 #pragma warning(disable : 4251)
 #endif
 
-// -----------------------------------------------------------------------------
-// Definitions
-// -----------------------------------------------------------------------------
-
 class ioctl_private : public ioctl_private_base
 {
 public:
 
-    using module_len_type = size_t;
-    using module_data_type = const char *;
-    using drr_pointer = ioctl::drr_pointer;
-    using vcpuid_type = ioctl::vcpuid_type;
-    using status_pointer = ioctl::status_pointer;
-    using handle_type = int;
-
     ioctl_private();
     ~ioctl_private() override;
 
-    virtual void open();
-    virtual void call_ioctl_add_module(gsl::not_null<module_data_type> data, module_len_type len);
-    virtual void call_ioctl_load_vmm();
-    virtual void call_ioctl_unload_vmm();
-    virtual void call_ioctl_start_vmm();
-    virtual void call_ioctl_stop_vmm();
-    virtual void call_ioctl_dump_vmm(gsl::not_null<drr_pointer> drr, vcpuid_type vcpuid);
-    virtual void call_ioctl_vmm_status(gsl::not_null<status_pointer> status);
+    void call_ioctl_create_from_elf(create_from_elf_args &args);
+    void call_ioctl_destroy(domainid_t domainid);
 
 private:
     HANDLE fd;

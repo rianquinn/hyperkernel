@@ -19,9 +19,9 @@
 
 case $(uname -s) in
 CYGWIN_NT*)
-    rm -Rf $1/src/platform/windows/.vs/
-    rm -Rf $1/src/platform/windows/bareflank.VC.db
-    rm -Rf $1/src/platform/windows/x64/
+    rm -Rf $1/bfdriver/builder/src/platform/windows/.vs/
+    rm -Rf $1/bfdriver/builder/src/platform/windows/builder.VC.db
+    rm -Rf $1/bfdriver/builder/src/platform/windows/x64/
     ;;
 Linux)
     cd $1/bfdriver/builder/src/platform/linux

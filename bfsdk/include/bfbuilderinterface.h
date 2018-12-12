@@ -43,8 +43,8 @@ extern "C" {
 #define BUILDER_DEVICETYPE 0xF00D
 #endif
 
-#define IOCTL_CREATE_FROM_ELF_CMD 0x801
-#define IOCTL_DESTROY_CMD 0x802
+#define IOCTL_CREATE_FROM_ELF_CMD 0x901
+#define IOCTL_DESTROY_CMD 0x902
 
 /**
  * @struct create_from_elf_args
@@ -101,19 +101,8 @@ struct create_from_elf_args {
 
 #include <initguid.h>
 
-DEFINE_GUID(
-    GUID_DEVINTERFACE_builder,
-    0x1d9c9218,
-    0x3c88,
-    0x4b81,
-    0x8e,
-    0x81,
-    0xb4,
-    0x62,
-    0x2a,
-    0x4d,
-    0xcb,
-    0x44);
+DEFINE_GUID(GUID_DEVINTERFACE_builder,
+    0x0156f59a, 0xdf90, 0x4ac6, 0x85, 0x3d, 0xcf, 0xd9, 0x3e, 0x25, 0x65, 0xc2);
 
 #define IOCTL_CREATE_FROM_ELF CTL_CODE(BUILDER_DEVICETYPE, IOCTL_CREATE_FROM_ELF_CMD, METHOD_IN_DIRECT, FILE_READ_DATA | FILE_WRITE_DATA)
 #define IOCTL_DESTROY CTL_CODE(BUILDER_DEVICETYPE, IOCTL_DESTROY_CMD, METHOD_IN_DIRECT, FILE_WRITE_DATA)

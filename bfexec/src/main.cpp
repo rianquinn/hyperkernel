@@ -76,11 +76,9 @@ attach_to_vm(const args_type &args)
 {
     bfignored(args);
 
-    auto ___ = gsl::finally([&]{
-        if (__vcpu_op__destroy_vcpu(g_vcpuid) != SUCCESS) {
-            std::cerr << "__vcpu_op__destroy_vcpu failed\n";
-        }
-    });
+    if (_cpuid_eax(0xBF00) != 0xBF01) {
+        throw std::runtime_error("hypervisor not running");
+    }
 
     g_vcpuid = __vcpu_op__create_vcpu(g_domainid);
     if (g_vcpuid == INVALID_VCPUID) {
@@ -91,6 +89,10 @@ attach_to_vm(const args_type &args)
 
     std::thread t(vcpu_thread, g_vcpuid);
     t.join();
+
+    if (__vcpu_op__destroy_vcpu(g_vcpuid) != SUCCESS) {
+        std::cerr << "__vcpu_op__destroy_vcpu failed\n";
+    }
 
     return EXIT_SUCCESS;
 }
