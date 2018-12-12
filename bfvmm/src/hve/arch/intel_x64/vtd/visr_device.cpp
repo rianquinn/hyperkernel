@@ -17,7 +17,7 @@ gsl::span<uint32_t> g_virtual_pci_config {};
 
 // Initial PCI Configuration space for the emulated device
 const uint32_t vendor_device = 0xBEEFF00D;      // Non-existent PCI Vendor/Device
-const uint32_t status_command = 0x00000001;
+const uint32_t status_command = 0x00100001;     // IO-space capable + capabilities list present
 const uint32_t class_sub_prog_rev = 0xFF000000; // Vendor-specific class
 const uint32_t bist_htype_ltimer_clsize = 0;
 const uint32_t bar0 = 0;
@@ -29,8 +29,11 @@ const uint32_t bar5 = 0;
 const uint32_t cis_ptr = 0;
 const uint32_t subid_subvendor = 0;
 const uint32_t option_rom_bar = 0;
-const uint32_t cap_ptr = 0;
-const uint32_t lat_grant_pin_line = 0x100;
+const uint32_t cap_ptr = 0x50;
+// const uint32_t lat_grant_pin_line = 0x100;   // Device one line based interrupt
+const uint32_t lat_grant_pin_line = 0x0;        // Device does not support line based interrupts
+
+const uint32_t cap_offset = cap_ptr / sizeof(uint32_t);
 
 // The physical bus/device/function the emulated device will occupy
 uint64_t g_bus = 0;
@@ -370,52 +373,6 @@ handle_cff_out(
     return true;
 }
 
-void
-print_ioapic_redirection_table(gsl::not_null<vcpu_t *> vcpu)
-{
-    bfdebug_info(0, "Looking up IOAPIC Redirection Table");
-    uintptr_t ioapic_base_phys = 0xfec00000;
-    auto my_vcpu = vcpu_cast(vcpu);
-    auto ioapic_base_virt = my_vcpu->map_hpa_4k<uint32_t>(ioapic_base_phys);
-    uint32_t ioregsel = 0;
-    uint32_t iowin = 0;
-    intel_x64::ioapic::rte_t rte = 0;
-
-    ioregsel = 0;
-    ioapic_base_virt.get()[0] = ioregsel;
-    iowin = ioapic_base_virt.get()[4];
-    bfdebug_subnhex(0, "IOAPIC ID:", iowin);
-
-    ioregsel = 1;
-    ioapic_base_virt.get()[0] = ioregsel;
-    iowin = ioapic_base_virt.get()[4];
-    bfdebug_subnhex(0, "IOAPIC Version:", iowin);
-
-    ioregsel = 2;
-    ioapic_base_virt.get()[0] = ioregsel;
-    iowin = ioapic_base_virt.get()[4];
-    bfdebug_subnhex(0, "IOAPIC Arbitration ID:", iowin);
-
-    for(uint32_t i = 0x10; i <= 0x3F; i+=2) {
-        // {31:0]
-        ioregsel = i;
-        ioapic_base_virt.get()[0] = ioregsel;
-        iowin = ioapic_base_virt.get()[4];
-        rte = iowin;
-
-        // {63:32]
-        ioregsel = i;
-        ioapic_base_virt.get()[0] = ioregsel;
-        iowin = ioapic_base_virt.get()[4];
-        rte = rte | (iowin << 32);
-        if(intel_x64::ioapic::rte::vector::get(rte) != 0xFF && rte != 0) {
-            bfdebug_nhex(0, "IOAPIC Redirection Table Entry index:", i - 0x10);
-            intel_x64::ioapic::rte::dump(0, rte);
-            bfdebug_info(0, "");
-        }
-    }
-}
-
 bool
 receive_vector_from_ndvm(
     gsl::not_null<vcpu_t *> vcpu,
@@ -442,13 +399,12 @@ receive_vector_from_windows(
 
     g_visr_vector = vcpu->rcx();
     bfdebug_nhex(0, "Recieved vector from VISR driver:", g_visr_vector);
-    print_ioapic_redirection_table(vcpu);
 
     return true;
 }
 
 bool
-windows_test_interrupt_inject(
+forward_interrupt_to_ndvm(
     gsl::not_null<vcpu_t *> vcpu,
     cpuid_handler::info_t &info
 )
@@ -456,23 +412,7 @@ windows_test_interrupt_inject(
     bfignored(vcpu);
     bfignored(info);
 
-    auto my_vcpu = vcpu_cast(vcpu);
-    my_vcpu->queue_external_interrupt(g_visr_vector);
-    bfdebug_info(0, "VISR driver requested an interrupt test, injecting to HDVM now");
-
-    return true;
-}
-
-bool
-windows_isr_ack(
-    gsl::not_null<vcpu_t *> vcpu,
-    cpuid_handler::info_t &info
-)
-{
-    bfignored(vcpu);
-    bfignored(info);
-
-    bfdebug_info(0, "The VISR ran!");
+    bfdebug_info(0, "Forwarding interrupt: VISR -> NDVM");
 
     // TODO: Inject the interrupt into the NDVM
     // auto ndvm_vcpu = ?;
@@ -512,6 +452,7 @@ enable(
         val = 0xBADC0FFE;
     }
 
+    // Standard configuration space
     g_virtual_pci_config.at(0) = vendor_device;
     g_virtual_pci_config.at(1) = status_command;
     g_virtual_pci_config.at(2) = class_sub_prog_rev;
@@ -528,6 +469,13 @@ enable(
     g_virtual_pci_config.at(13) = cap_ptr;
     g_virtual_pci_config.at(14) = 0;
     g_virtual_pci_config.at(15) = lat_grant_pin_line;
+
+    // PCI Capabilities (Report MSI Capable)
+    g_virtual_pci_config.at(cap_offset) = 0x10005;  // MSI Capability ID + MSI Enable, end of capabilties
+    g_virtual_pci_config.at(cap_offset + 1) = 0x0;  // MSI Address will be written here
+    g_virtual_pci_config.at(cap_offset + 2) = 0x0;  // MSI Data will be written here
+    g_virtual_pci_config.at(cap_offset + 3) = 0x0;  // Unmask all messages
+    g_virtual_pci_config.at(cap_offset + 4) = 0x0;  // Set no pending messages
 
     // -------------------------------------------------------------------------
     // PCI configuration space handlers
@@ -570,13 +518,8 @@ enable(
     );
 
     vcpu->emulate_cpuid(
-        0xdeadbeef,
-        cpuid_handler::handler_delegate_t::create<windows_test_interrupt_inject>()
-    );
-
-    vcpu->emulate_cpuid(
         0xcafebabe,
-        cpuid_handler::handler_delegate_t::create<windows_isr_ack>()
+        cpuid_handler::handler_delegate_t::create<forward_interrupt_to_ndvm>()
     );
 
     // bfdebug_info(0, "Virtual interrupt service route device initialized");
