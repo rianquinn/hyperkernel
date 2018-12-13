@@ -119,13 +119,15 @@ static inline status_t
 __domain_op__share_page(
     domainid_t foreign_domainid, uint64_t self_gpa, uint64_t foreign_gpa, uint64_t type)
 {
+    status_t ret;
+
     struct __domain_op__share_page_arg_t arg;
     arg.foreign_domainid = foreign_domainid;
     arg.self_gpa = self_gpa;
     arg.foreign_gpa = foreign_gpa;
     arg.type = type;
 
-    status_t ret = _vmcall(
+    ret = _vmcall(
         __enum_domain_op,
         __enum_domain_op__share_page,
         bfrcast(uint64_t, &arg),
@@ -139,13 +141,15 @@ static inline status_t
 __domain_op__add_e820_entry(
     domainid_t domainid, uint64_t addr, uint64_t size, uint32_t type)
 {
+    status_t ret;
+
     struct __domain_op__add_e820_entry_arg_t arg;
     arg.domainid = domainid;
     arg.addr = addr;
     arg.size = size;
     arg.type = type;
 
-    status_t ret = _vmcall(
+    ret = _vmcall(
         __enum_domain_op,
         __enum_domain_op__add_e820_entry,
         bfrcast(uint64_t, &arg),

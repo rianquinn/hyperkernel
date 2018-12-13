@@ -39,7 +39,7 @@ parse_args(int argc, char *argv[])
         ("uart", "Pass-through a UART to VM", value<uint64_t>(), "[port #]")
         ("init", "The VM's init process", value<std::string>(), "[path]")
         ("cmdline", "Additional Linux command line arguments", value<std::string>(), "[text]")
-        ("affinity", "The host CPU to execute the VM on", value<int>(), "[core #]");
+        ("affinity", "The host CPU to execute the VM on", value<uint64_t>(), "[core #]");
 
     auto args = options.parse(argc, argv);
 

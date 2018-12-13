@@ -54,6 +54,7 @@ class EXPORT_HYPERKERNEL_HVE uart
 public:
 
     using port_type = uint16_t;
+    using data_type = uint8_t;
 
     /// Constructor
     ///
@@ -129,11 +130,12 @@ private:
     port_type m_port;
 
     bool m_enabled{};
-    std::deque<char> m_buffer;
+    std::deque<data_type> m_buffer;
 
-    uint8_t m_baud_rate_l;
-    uint8_t m_baud_rate_h;
-    uint8_t m_line_control_register;
+    data_type m_baud_rate_l{};
+    data_type m_baud_rate_h{};
+    data_type m_line_control_register{};
+
 };
 
 }

@@ -16,6 +16,8 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
+#include <bfdebug.h>
+
 #include <hve/arch/intel_x64/vcpu.h>
 #include <hve/arch/intel_x64/uart.h>
 
@@ -41,23 +43,23 @@ uart::uart(
     m_vcpu{vcpu},
     m_port{port}
 {
-    EMULATE_IO_INSTRUCTION(port + 0, io_zero_handler, io_ignore_handler);
-    EMULATE_IO_INSTRUCTION(port + 1, io_zero_handler, io_ignore_handler);
-    EMULATE_IO_INSTRUCTION(port + 2, io_zero_handler, io_ignore_handler);
-    EMULATE_IO_INSTRUCTION(port + 3, io_zero_handler, io_ignore_handler);
-    EMULATE_IO_INSTRUCTION(port + 4, io_zero_handler, io_ignore_handler);
-    EMULATE_IO_INSTRUCTION(port + 5, io_zero_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 0, io_zero_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 1, io_zero_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 2, io_zero_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 3, io_zero_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 4, io_zero_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 5, io_zero_handler, io_ignore_handler);
 }
 
 void
 uart::enable()
 {
-    EMULATE_IO_INSTRUCTION(port + 0, reg0_in_handler, reg0_out_handler);
-    EMULATE_IO_INSTRUCTION(port + 1, reg1_in_handler, reg1_out_handler);
-    EMULATE_IO_INSTRUCTION(port + 2, reg2_in_handler, reg2_out_handler);
-    EMULATE_IO_INSTRUCTION(port + 3, reg3_in_handler, reg3_out_handler);
-    EMULATE_IO_INSTRUCTION(port + 4, reg4_in_handler, reg4_out_handler);
-    EMULATE_IO_INSTRUCTION(port + 5, reg5_in_handler, reg5_out_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 0, reg0_in_handler, reg0_out_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 1, reg1_in_handler, reg1_out_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 2, reg2_in_handler, reg2_out_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 3, reg3_in_handler, reg3_out_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 4, reg4_in_handler, reg4_out_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 5, reg5_in_handler, reg5_out_handler);
 }
 
 bool
@@ -107,7 +109,6 @@ uart::reg1_in_handler(
     }
     else {
         info.val = 0x0;
-        bfwarning(0, "interrupt enable register read not supported");
     }
 
     return true;
@@ -120,6 +121,8 @@ uart::reg2_in_handler(
     bfignored(vcpu);
 
     info.val = 0x0;
+    bfalert_info(1, "uart: reg2 read not supported");
+
     return true;
 }
 
@@ -140,6 +143,8 @@ uart::reg4_in_handler(
     bfignored(vcpu);
 
     info.val = 0x0;
+    bfalert_info(1, "uart: reg4 read not supported");
+
     return true;
 }
 
@@ -160,10 +165,10 @@ uart::reg0_out_handler(
     bfignored(vcpu);
 
     if (this->dlab()) {
-        m_baud_rate_l = info.val;
+        m_baud_rate_l = gsl::narrow<data_type>(info.val);
     }
     else {
-        std::cout << info.val;
+        std::cout << gsl::narrow<data_type>(info.val);
     }
 
     return true;
@@ -176,7 +181,12 @@ uart::reg1_out_handler(
     bfignored(vcpu);
 
     if (this->dlab()) {
-        m_baud_rate_h = info.val;
+        m_baud_rate_h = gsl::narrow<data_type>(info.val);
+    }
+    else {
+        if (info.val != 0) {
+            bfalert_info(1, "uart: none-zero write to reg1 unsupported");
+        }
     }
 
     return true;
@@ -198,7 +208,7 @@ uart::reg3_out_handler(
 {
     bfignored(vcpu);
 
-    m_line_control_register = info.val;
+    m_line_control_register = gsl::narrow<data_type>(info.val);
     return true;
 }
 
@@ -219,6 +229,7 @@ uart::reg5_out_handler(
     bfignored(vcpu);
     bfignored(info);
 
+    bfalert_info(1, "uart: reg5 write not supported");
     return true;
 }
 

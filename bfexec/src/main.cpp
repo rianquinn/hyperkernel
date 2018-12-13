@@ -165,13 +165,13 @@ create_elf_vm(const args_type &args)
         size = args["size"].as<uint64_t>();
     }
 
-    uint64_t uart = 0;
-    if (args.count("uart")) {
-        uart = args["uart"].as<uint64_t>();
+    uint64_t uart = 0x3F8;
+    // if (args.count("uart")) {
+    //     uart = args["uart"].as<uint64_t>();
         cmdl.add(
             "console=uart,io," + bfn::to_string(uart, 16) + ",115200n8"
         );
-    }
+    // }
 
     if (args.count("init")) {
         cmdl.add("init=" + args["init"].as<std::string>());
@@ -202,7 +202,7 @@ static int
 protected_main(const args_type &args)
 {
     if (args.count("affinity")) {
-        set_affinity(args["affinity"].as<int>());
+        set_affinity(args["affinity"].as<uint64_t>());
     }
     else {
 

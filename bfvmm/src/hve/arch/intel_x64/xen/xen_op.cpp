@@ -152,9 +152,10 @@ xen_op_handler::xen_op_handler(
         return;
     }
 
-    if (auto uart = domain->pt_uart(); uart != 0) {
-        m_uart_3F8.enable();
-    }
+    // if (auto uart = domain->pt_uart(); uart != 0) {
+    // }
+
+    m_uart_3F8.enable();
 
     vcpu->pass_through_msr_access(::x64::msrs::ia32_pat::addr);
     vcpu->pass_through_msr_access(::intel_x64::msrs::ia32_efer::addr);
