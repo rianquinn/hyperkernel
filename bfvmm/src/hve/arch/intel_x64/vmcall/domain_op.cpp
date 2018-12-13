@@ -151,6 +151,27 @@ vmcall_domain_op_handler::domain_op__set_entry(
 }
 
 void
+vmcall_domain_op_handler::domain_op__set_uart(
+    gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        if (vcpu->rcx() == self) {
+            throw std::runtime_error(
+                "domain_op__set_uart: self not supported");
+        }
+
+        get_domain(vcpu->rcx())->set_uart(
+            gsl::narrow_cast<uart::port_type>(vcpu->rdx())
+        );
+
+        vcpu->set_rax(SUCCESS);
+    }
+    catchall({
+        vcpu->set_rax(FAILURE);
+    })
+}
+
+void
 vmcall_domain_op_handler::domain_op__set_pt_uart(
     gsl::not_null<vcpu *> vcpu)
 {
@@ -161,7 +182,7 @@ vmcall_domain_op_handler::domain_op__set_pt_uart(
         }
 
         get_domain(vcpu->rcx())->set_pt_uart(
-            gsl::narrow_cast<uint8_t>(vcpu->rdx())
+            gsl::narrow_cast<uart::port_type>(vcpu->rdx())
         );
 
         vcpu->set_rax(SUCCESS);
@@ -198,6 +219,10 @@ vmcall_domain_op_handler::dispatch(
 
         case __enum_domain_op__set_entry:
             this->domain_op__set_entry(vcpu);
+            return true;
+
+        case __enum_domain_op__set_uart:
+            this->domain_op__set_uart(vcpu);
             return true;
 
         case __enum_domain_op__set_pt_uart:

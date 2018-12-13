@@ -152,10 +152,33 @@ xen_op_handler::xen_op_handler(
         return;
     }
 
-    // if (auto uart = domain->pt_uart(); uart != 0) {
-    // }
+    if (auto port = domain->uart(); port != 0) {
+        switch(port) {
+            case 0x3F8:
+                m_uart_3F8.enable();
+                break;
 
-    m_uart_3F8.enable();
+            case 0x2F8:
+                m_uart_2F8.enable();
+                break;
+
+            case 0x3E8:
+                m_uart_3E8.enable();
+                break;
+
+            case 0x2E8:
+                m_uart_2E8.enable();
+                break;
+
+            default:
+                bfalert_nhex(0, "uart port not supported", port);
+        }
+    }
+
+    if (auto port = domain->pt_uart(); port != 0) {
+        m_pt_uart = uart{m_vcpu, port};
+        m_pt_uart->pass_through();
+    }
 
     vcpu->pass_through_msr_access(::x64::msrs::ia32_pat::addr);
     vcpu->pass_through_msr_access(::intel_x64::msrs::ia32_efer::addr);
@@ -225,14 +248,6 @@ xen_op_handler::xen_op_handler(
     /// NMI assertion
     EMULATE_IO_INSTRUCTION(0x70, io_zero_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0x71, io_zero_handler, io_ignore_handler);
-
-    // /// TODO: We need to trace these down. These are Serial ports
-    // ///     that are not being given to Linux. These either need to be
-    // ///     turned off in the kernel, or we need to setup default
-    // ///     handlers in the vCPU for these when the pt and em UARTs/TTYs
-    // ///     are not using them (which is likley the case)
-    // EMULATE_IO_INSTRUCTION(0x2F9, io_zero_handler, io_ignore_handler);
-    // EMULATE_IO_INSTRUCTION(0x3FE, io_zero_handler, io_ignore_handler);
 
     /// Ports used for TSC calibration against the PIT. See
     /// arch/x86/kernel/tsc.c:pit_calibrate_tsc for detail.

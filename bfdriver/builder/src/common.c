@@ -105,7 +105,23 @@ donate_page_to_page_range(
 /* -------------------------------------------------------------------------- */
 
 static status_t
-pass_through_uart(
+setup_uart(
+    struct vm_t *vm, uint64_t uart)
+{
+    status_t ret = SUCCESS;
+
+    if (uart != 0) {
+        ret = __domain_op__set_uart(vm->domainid, uart);
+        if (ret != SUCCESS) {
+            BFDEBUG("donate_page: __domain_op__set_uart failed\n");
+        }
+    }
+
+    return ret;
+}
+
+static status_t
+setup_pt_uart(
     struct vm_t *vm, uint64_t uart)
 {
     status_t ret = SUCCESS;
@@ -392,7 +408,12 @@ common_create_from_elf(
         return ret;
     }
 
-    ret = pass_through_uart(vm, args->uart);
+    ret = setup_uart(vm, args->uart);
+    if (ret != SUCCESS) {
+        return ret;
+    }
+
+    ret = setup_pt_uart(vm, args->pt_uart);
     if (ret != SUCCESS) {
         return ret;
     }

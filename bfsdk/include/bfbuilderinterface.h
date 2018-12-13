@@ -77,8 +77,9 @@ struct create_from_elf_args {
     uint64_t cmdl_size;
 
     uint64_t uart;
-    uint64_t size;
+    uint64_t pt_uart;
 
+    uint64_t size;
     uint64_t domainid;
 };
 

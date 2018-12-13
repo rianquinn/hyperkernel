@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "acpi.h"
+#include "uart.h"
 #include "../../../domain/domain.h"
 
 #include <eapis/hve/arch/intel_x64/vcpu.h>
@@ -236,6 +237,28 @@ public:
     ///
     void add_e820_entry(const e820_entry_t &entry);
 
+    /// Set UART
+    ///
+    /// If set, enables the use of an emulated UART that will be created
+    /// during the vCPU's construction
+    ///
+    /// @expects
+    /// @ensures
+    ///
+    /// @param uart the port of the serial device to emulate
+    ///
+    void set_uart(uart::port_type uart) noexcept;
+
+    /// Get UART
+    ///
+    /// @expects
+    /// @ensures
+    ///
+    /// @return returns the port of an emulated UART on success,
+    ///     and 0 if no UART is set.
+    ///
+    uart::port_type uart() const noexcept;
+
     /// Set Pass-Through UART
     ///
     /// If set, passes through a UART to the VM during each vCPU's
@@ -246,7 +269,7 @@ public:
     ///
     /// @param uart the port of the serial device to pass through
     ///
-    void set_pt_uart(uint8_t uart) noexcept;
+    void set_pt_uart(uart::port_type uart) noexcept;
 
     /// Get Pass-Through UART
     ///
@@ -256,7 +279,7 @@ public:
     /// @return returns the port of a pass-throughed UART on success,
     ///     and 0 if no UART is set.
     ///
-    uint8_t pt_uart() const noexcept;
+    uart::port_type pt_uart() const noexcept;
 
 public:
 
@@ -303,7 +326,8 @@ private:
     uint64_t m_idt_virt{};
 
     std::vector<e820_entry_t> m_e820_map;
-    uint8_t m_pt_uart{};
+    uart::port_type m_uart{};
+    uart::port_type m_pt_uart{};
 
     eapis::intel_x64::ept::mmap m_ept_map;
     eapis::intel_x64::vcpu_global_state_t m_vcpu_global_state;

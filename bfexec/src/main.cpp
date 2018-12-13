@@ -165,13 +165,21 @@ create_elf_vm(const args_type &args)
         size = args["size"].as<uint64_t>();
     }
 
-    uint64_t uart = 0x3F8;
-    // if (args.count("uart")) {
-    //     uart = args["uart"].as<uint64_t>();
+    uint64_t uart = 0;
+    if (args.count("uart")) {
+        uart = args["uart"].as<uint64_t>();
         cmdl.add(
             "console=uart,io," + bfn::to_string(uart, 16) + ",115200n8"
         );
-    // }
+    }
+
+    uint64_t pt_uart = 0;
+    if (args.count("pt_uart")) {
+        pt_uart = args["pt_uart"].as<uint64_t>();
+        cmdl.add(
+            "console=uart,io," + bfn::to_string(pt_uart, 16) + ",115200n8"
+        );
+    }
 
     if (args.count("init")) {
         cmdl.add("init=" + args["init"].as<std::string>());
@@ -186,6 +194,7 @@ create_elf_vm(const args_type &args)
     ioctl_args.cmdl = cmdl.data();
     ioctl_args.cmdl_size = cmdl.size();
     ioctl_args.uart = uart;
+    ioctl_args.pt_uart = pt_uart;
     ioctl_args.size = size;
 
     ctl->call_ioctl_create_from_elf(ioctl_args);

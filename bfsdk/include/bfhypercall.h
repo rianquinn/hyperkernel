@@ -71,7 +71,8 @@ uint64_t _vmcall(uint64_t r1, uint64_t r2, uint64_t r3, uint64_t r4) NOEXCEPT;
 #define __enum_domain_op__share_page 0x110
 #define __enum_domain_op__add_e820_entry 0x120
 #define __enum_domain_op__set_entry 0x130
-#define __enum_domain_op__set_pt_uart 0x140
+#define __enum_domain_op__set_uart 0x140
+#define __enum_domain_op__set_pt_uart 0x141
 
 #define MAP_RO 1
 #define MAP_RW 4
@@ -167,6 +168,19 @@ __domain_op__set_entry(domainid_t foreign_domainid, uint64_t gpa)
         __enum_domain_op__set_entry,
         foreign_domainid,
         gpa
+    );
+
+    return ret == 0 ? SUCCESS : FAILURE;
+}
+
+static inline status_t
+__domain_op__set_uart(domainid_t foreign_domainid, uint64_t uart)
+{
+    status_t ret = _vmcall(
+        __enum_domain_op,
+        __enum_domain_op__set_uart,
+        foreign_domainid,
+        uart
     );
 
     return ret == 0 ? SUCCESS : FAILURE;

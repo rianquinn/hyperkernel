@@ -32,14 +32,15 @@ parse_args(int argc, char *argv[])
         ("h,help", "Print this help menu")
         ("v,verbose", "Enable verbose output")
         ("version", "Print the version")
+        ("affinity", "The host CPU to execute the VM on", value<uint64_t>(), "[core #]")
         ("attach", "Attach to a VM that was already created", value<uint64_t>(), "[domid]")
         ("elf", "Create a VM from an ELF file and attach to it")
         ("path", "The VM's path", value<std::string>(), "[path]")
         ("size", "The VM's total RAM", value<uint64_t>(), "[bytes]")
-        ("uart", "Pass-through a UART to VM", value<uint64_t>(), "[port #]")
         ("init", "The VM's init process", value<std::string>(), "[path]")
         ("cmdline", "Additional Linux command line arguments", value<std::string>(), "[text]")
-        ("affinity", "The host CPU to execute the VM on", value<uint64_t>(), "[core #]");
+        ("uart", "Give the VM an emulated UART", value<uint64_t>(), "[port #]")
+        ("pt_uart", "Pass-through a UART to VM", value<uint64_t>(), "[port #]");
 
     auto args = options.parse(argc, argv);
 
@@ -63,6 +64,10 @@ parse_args(int argc, char *argv[])
 
     if (!args.count("attach") && !args.count("elf")) {
         throw std::runtime_error("must specify 'elf' or 'attach'");
+    }
+
+    if (args.count("uart") && args.count("pt_uart")) {
+        throw std::runtime_error("must specify 'uart' or 'pt_uart'");
     }
 
     return args;

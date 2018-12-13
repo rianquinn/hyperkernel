@@ -43,6 +43,10 @@ uart::uart(
     m_vcpu{vcpu},
     m_port{port}
 {
+    if (m_vcpu->is_dom0()) {
+        return;
+    }
+
     EMULATE_IO_INSTRUCTION(m_port + 0, io_zero_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(m_port + 1, io_zero_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(m_port + 2, io_zero_handler, io_ignore_handler);
@@ -54,12 +58,33 @@ uart::uart(
 void
 uart::enable()
 {
+    if (m_vcpu->is_dom0()) {
+        return;
+    }
+
+    bfdebug_nhex(1, "emulating uart", m_port);
     EMULATE_IO_INSTRUCTION(m_port + 0, reg0_in_handler, reg0_out_handler);
     EMULATE_IO_INSTRUCTION(m_port + 1, reg1_in_handler, reg1_out_handler);
     EMULATE_IO_INSTRUCTION(m_port + 2, reg2_in_handler, reg2_out_handler);
     EMULATE_IO_INSTRUCTION(m_port + 3, reg3_in_handler, reg3_out_handler);
     EMULATE_IO_INSTRUCTION(m_port + 4, reg4_in_handler, reg4_out_handler);
     EMULATE_IO_INSTRUCTION(m_port + 5, reg5_in_handler, reg5_out_handler);
+}
+
+void
+uart::pass_through()
+{
+    if (m_vcpu->is_dom0()) {
+        return;
+    }
+
+    bfdebug_nhex(1, "passing through uart", m_port);
+    m_vcpu->pass_through_io_accesses(m_port + 0);
+    m_vcpu->pass_through_io_accesses(m_port + 1);
+    m_vcpu->pass_through_io_accesses(m_port + 2);
+    m_vcpu->pass_through_io_accesses(m_port + 3);
+    m_vcpu->pass_through_io_accesses(m_port + 4);
+    m_vcpu->pass_through_io_accesses(m_port + 5);
 }
 
 bool

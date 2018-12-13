@@ -24,6 +24,9 @@
 
 #include <deque>
 
+#include <eapis/hve/arch/intel_x64/vcpu.h>
+#include <eapis/hve/arch/intel_x64/vmexit/io_instruction.h>
+
 // -----------------------------------------------------------------------------
 // Exports
 // -----------------------------------------------------------------------------
@@ -87,6 +90,18 @@ public:
     /// @ensures
     ///
     void enable();
+
+    /// Pass-Through
+    ///
+    /// Instead of emulating the UART, this will cause the UART to be passed
+    /// through to the guest, physically giving the guest the device. Special
+    /// care should be used when enabling this feature as the guest will own
+    /// the device and be externally accessible.
+    ///
+    /// @expects
+    /// @ensures
+    ///
+    void pass_through();
 
 private:
 
