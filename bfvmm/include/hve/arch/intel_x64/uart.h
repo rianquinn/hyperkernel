@@ -21,11 +21,13 @@
 
 #include <bfgsl.h>
 #include <bftypes.h>
+#include <bfhypercall.h>
 
-#include <deque>
+#include <array>
 #include <mutex>
 
 #include <eapis/hve/arch/intel_x64/vcpu.h>
+#include <eapis/hve/arch/intel_x64/vmexit/cpuid.h>
 #include <eapis/hve/arch/intel_x64/vmexit/io_instruction.h>
 
 // -----------------------------------------------------------------------------
@@ -163,6 +165,9 @@ private:
     bool reg5_out_handler(
         gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info);
 
+    bool cpuid_in_handler(
+        gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info);
+
     bool dlab() const
     { return m_line_control_register & 0x80; }
 
@@ -170,8 +175,9 @@ private:
 
     port_type m_port{};
 
-    std::mutex m_mutex;
-    std::deque<data_type> m_buffer;
+    std::mutex m_mutex{};
+    std::size_t m_index{};
+    std::array<data_type, UART_MAX_BUFFER> m_buffer{};
 
     data_type m_baud_rate_l{};
     data_type m_baud_rate_h{};

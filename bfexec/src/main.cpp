@@ -85,12 +85,12 @@ void
 uart_thread()
 {
     using namespace std::chrono;
-    std::array<char, UART_MAX_BUFFER> buffer;
+    std::array<char, UART_MAX_BUFFER> buffer{};
 
     while(g_process_uart) {
         auto size = __domain_op__dump_uart(g_domainid, buffer.data());
-        std::cout.write(buffer.data(), size);
-        std::this_thread::sleep_for(milliseconds(500));
+        std::cout.write(buffer.data(), gsl::narrow_cast<int>(size));
+        std::this_thread::sleep_for(milliseconds(100));
     }
 }
 

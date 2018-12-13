@@ -17,7 +17,6 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 #include <bfdebug.h>
-#include <bfhypercall.h>
 
 #include <hve/arch/intel_x64/vcpu.h>
 #include <hve/arch/intel_x64/uart.h>
@@ -31,8 +30,12 @@
 #define make_delegate(a,b)                                                                          \
     eapis::intel_x64::a::handler_delegate_t::create<uart, &uart::b>(this)
 
+#define EMULATE_CPUID(a,b)                                                                          \
+    vcpu->emulate_cpuid(                                                                          \
+        a, make_delegate(cpuid_handler, b))
+
 #define EMULATE_IO_INSTRUCTION(a,b,c)                                                               \
-    vcpu->emulate_io_instruction(                                                                 \
+    vcpu->emulate_io_instruction(                                                                   \
         a, make_delegate(io_instruction_handler, b), make_delegate(io_instruction_handler, c))
 
 namespace hyperkernel::intel_x64
@@ -57,6 +60,8 @@ uart::enable(gsl::not_null<vcpu *> vcpu)
     EMULATE_IO_INSTRUCTION(m_port + 3, reg3_in_handler, reg3_out_handler);
     EMULATE_IO_INSTRUCTION(m_port + 4, reg4_in_handler, reg4_out_handler);
     EMULATE_IO_INSTRUCTION(m_port + 5, reg5_in_handler, reg5_out_handler);
+
+    EMULATE_CPUID(0xBF00, cpuid_in_handler);
 }
 
 void
@@ -99,11 +104,11 @@ uart::dump(const gsl::span<data_type> &buffer)
     uint64_t i;
     std::lock_guard lock(m_mutex);
 
-    for (i = 0; i < m_buffer.size(); i++) {
-        buffer.at(i) = m_buffer.at(i);
+    for (i = 0; i < m_index; i++) {
+        buffer.at(static_cast<std::ptrdiff_t>(i)) = m_buffer.at(i);
     }
 
-    m_buffer.clear();
+    m_index = 0;
     return i;
 }
 
@@ -217,8 +222,8 @@ uart::reg0_out_handler(
         m_baud_rate_l = gsl::narrow<data_type>(info.val);
     }
     else {
-        if (m_buffer.size() < UART_MAX_BUFFER) {
-            m_buffer.push_back(gsl::narrow<data_type>(info.val));
+        if (m_index < m_buffer.size()) {
+            m_buffer.at(m_index++) = gsl::narrow<data_type>(info.val);
         }
     }
 
@@ -285,5 +290,22 @@ uart::reg5_out_handler(
     bfalert_info(1, "uart: reg5 write not supported");
     return true;
 }
+
+bool
+uart::cpuid_in_handler(
+    gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info)
+{
+    bfignored(info);
+    std::lock_guard lock(m_mutex);
+
+    const auto msg = "Hello World\n";
+    for (auto i = 0U; i < strlen(msg); i++) {
+        m_buffer.at(m_index++) = static_cast<data_type>(msg[i]);
+    }
+
+    bfdebug_nhex(0, msg, vcpu->rax());
+    return true;
+}
+
 
 }

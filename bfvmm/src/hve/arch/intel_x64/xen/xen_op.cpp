@@ -232,7 +232,6 @@ xen_op_handler::xen_op_handler(
 
     ADD_EPT_WRITE_HANDLER(ioapic_handle_write);
     ADD_EPT_WRITE_HANDLER(xapic_handle_write);
-    EMULATE_CPUID(0xBF00, cpuid_ack_handler);
 
     m_pet_shift = ::intel_x64::msrs::ia32_vmx_misc::preemption_timer_decrement::get();
     m_tsc_freq_khz = tsc_frequency();
@@ -819,16 +818,6 @@ xen_op_handler::handle_tsc_deadline(
 // -----------------------------------------------------------------------------
 // CPUID
 // -----------------------------------------------------------------------------
-
-bool
-xen_op_handler::cpuid_ack_handler(
-    gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info)
-{
-    bfignored(info);
-
-    bfdebug_nhex(0, "ack received", vcpu->rax());
-    return true;
-}
 
 bool
 xen_op_handler::cpuid_zero_handler(

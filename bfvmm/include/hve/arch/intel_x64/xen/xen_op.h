@@ -130,8 +130,6 @@ private:
     // CPUID
     // -------------------------------------------------------------------------
 
-    bool cpuid_ack_handler(
-        gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info);
     bool cpuid_zero_handler(
         gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info);
     bool cpuid_pass_through_handler(
