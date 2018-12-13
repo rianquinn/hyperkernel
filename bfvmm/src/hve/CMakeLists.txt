@@ -33,6 +33,7 @@ if(${BUILD_TARGET_ARCH} STREQUAL "x86_64")
         arch/intel_x64/domain.cpp
         arch/intel_x64/ioapic.cpp
         arch/intel_x64/lapic.cpp
+        arch/intel_x64/uart.cpp
         arch/intel_x64/vcpu.cpp
     )
 

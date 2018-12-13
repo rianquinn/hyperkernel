@@ -22,6 +22,7 @@
 #define __XEN_INTERFACE_VERSION__ 0x040900
 
 #include "../base.h"
+#include "../uart.h"
 
 #include <xen/public/xen.h>
 #include <xen/public/vcpu.h>
@@ -252,6 +253,11 @@ private:
 
     vcpu *m_vcpu;
     domain *m_domain;
+
+    uart m_uart_3F8;
+    uart m_uart_2F8;
+    uart m_uart_3E8;
+    uart m_uart_2E8;
 
     vcpu_info_t *m_vcpu_info;
     uint64_t m_hypercall_page_gpa{};

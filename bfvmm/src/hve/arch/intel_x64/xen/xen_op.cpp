@@ -103,6 +103,10 @@ xen_op_handler::xen_op_handler(
 ) :
     m_vcpu{vcpu},
     m_domain{domain},
+    m_uart_3F8{vcpu, 0x3F8},
+    m_uart_2F8{vcpu, 0x2F8},
+    m_uart_3E8{vcpu, 0x3E8},
+    m_uart_2E8{vcpu, 0x2E8},
     m_evtchn_op{std::make_unique<evtchn_op>(vcpu, this)},
     m_gnttab_op{std::make_unique<gnttab_op>(vcpu, this)}
 {
@@ -149,12 +153,7 @@ xen_op_handler::xen_op_handler(
     }
 
     if (auto uart = domain->pt_uart(); uart != 0) {
-        vcpu->pass_through_io_accesses(0x3F8 + 0);
-        vcpu->pass_through_io_accesses(0x3F8 + 1);
-        vcpu->pass_through_io_accesses(0x3F8 + 2);
-        vcpu->pass_through_io_accesses(0x3F8 + 3);
-        vcpu->pass_through_io_accesses(0x3F8 + 4);
-        vcpu->pass_through_io_accesses(0x3F8 + 5);
+        m_uart_3F8.enable();
     }
 
     vcpu->pass_through_msr_access(::x64::msrs::ia32_pat::addr);
@@ -226,13 +225,13 @@ xen_op_handler::xen_op_handler(
     EMULATE_IO_INSTRUCTION(0x70, io_zero_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(0x71, io_zero_handler, io_ignore_handler);
 
-    /// TODO: We need to trace these down. These are Serial ports
-    ///     that are not being given to Linux. These either need to be
-    ///     turned off in the kernel, or we need to setup default
-    ///     handlers in the vCPU for these when the pt and em UARTs/TTYs
-    ///     are not using them (which is likley the case)
-    EMULATE_IO_INSTRUCTION(0x2F9, io_zero_handler, io_ignore_handler);
-    EMULATE_IO_INSTRUCTION(0x3FE, io_zero_handler, io_ignore_handler);
+    // /// TODO: We need to trace these down. These are Serial ports
+    // ///     that are not being given to Linux. These either need to be
+    // ///     turned off in the kernel, or we need to setup default
+    // ///     handlers in the vCPU for these when the pt and em UARTs/TTYs
+    // ///     are not using them (which is likley the case)
+    // EMULATE_IO_INSTRUCTION(0x2F9, io_zero_handler, io_ignore_handler);
+    // EMULATE_IO_INSTRUCTION(0x3FE, io_zero_handler, io_ignore_handler);
 
     /// Ports used for TSC calibration against the PIT. See
     /// arch/x86/kernel/tsc.c:pit_calibrate_tsc for detail.
