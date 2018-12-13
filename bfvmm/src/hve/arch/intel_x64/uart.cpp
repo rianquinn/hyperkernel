@@ -298,12 +298,14 @@ uart::cpuid_in_handler(
     bfignored(info);
     std::lock_guard lock(m_mutex);
 
-    const auto msg = "Hello World\n";
+    const auto msg = "Hello World";
     for (auto i = 0U; i < strlen(msg); i++) {
         m_buffer.at(m_index++) = static_cast<data_type>(msg[i]);
     }
 
     bfdebug_nhex(0, msg, vcpu->rax());
+    m_buffer.at(m_index++) = static_cast<data_type>('\n');
+
     return true;
 }
 
