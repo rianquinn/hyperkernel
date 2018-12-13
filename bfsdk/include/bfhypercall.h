@@ -21,6 +21,7 @@
 
 #include <bftypes.h>
 #include <bfmemory.h>
+#include <bfconstants.h>
 #include <bferrorcodes.h>
 
 #pragma pack(push, 1)
@@ -61,6 +62,7 @@ uint64_t _vmcall(uint64_t r1, uint64_t r2, uint64_t r3, uint64_t r4) NOEXCEPT;
 #define __enum_domain_op 0xBF5C000000000100
 #define __enum_run_op 0xBF5C000000000200
 #define __enum_vcpu_op 0xBF5C000000000300
+#define __enum_uart_op 0xBF5C000000000400
 
 // -----------------------------------------------------------------------------
 // Domain Operations
@@ -73,10 +75,13 @@ uint64_t _vmcall(uint64_t r1, uint64_t r2, uint64_t r3, uint64_t r4) NOEXCEPT;
 #define __enum_domain_op__set_entry 0x130
 #define __enum_domain_op__set_uart 0x140
 #define __enum_domain_op__set_pt_uart 0x141
+#define __enum_domain_op__dump_uart 0x142
 
 #define MAP_RO 1
 #define MAP_RW 4
 #define MAP_RWE 6
+
+#define UART_MAX_BUFFER 0x4000
 
 struct __domain_op__share_page_arg_t {
     domainid_t foreign_domainid;
@@ -197,6 +202,17 @@ __domain_op__set_pt_uart(domainid_t foreign_domainid, uint64_t uart)
     );
 
     return ret == 0 ? SUCCESS : FAILURE;
+}
+
+static inline uint64_t
+__domain_op__dump_uart(domainid_t domainid, char *buffer)
+{
+    return _vmcall(
+        __enum_domain_op,
+        __enum_domain_op__dump_uart,
+        domainid,
+        bfrcast(uint64_t, buffer)
+    );
 }
 
 // -----------------------------------------------------------------------------

@@ -23,6 +23,7 @@
 #include <bftypes.h>
 
 #include <deque>
+#include <mutex>
 
 #include <eapis/hve/arch/intel_x64/vcpu.h>
 #include <eapis/hve/arch/intel_x64/vmexit/io_instruction.h>
@@ -68,8 +69,7 @@ public:
     ///
     /// @cond
     ///
-    explicit uart(
-        gsl::not_null<vcpu *> vcpu, port_type port);
+    explicit uart(port_type port);
 
     /// @endcond
 
@@ -89,7 +89,21 @@ public:
     /// @expects
     /// @ensures
     ///
-    void enable();
+    /// @param vcpu the vcpu to enable this UART on
+    ///
+    void enable(gsl::not_null<vcpu *> vcpu);
+
+    /// Disable
+    ///
+    /// Disables the UART. All reads to this UART from the guest will result
+    /// in zero while all writes to this UART will be ignored.
+    ///
+    /// @expects
+    /// @ensures
+    ///
+    /// @param vcpu the vcpu to disable this UART on
+    ///
+    void disable(gsl::not_null<vcpu *> vcpu);
 
     /// Pass-Through
     ///
@@ -101,7 +115,20 @@ public:
     /// @expects
     /// @ensures
     ///
-    void pass_through();
+    /// @param vcpu the vcpu to pass-through this UART on
+    ///
+    void pass_through(gsl::not_null<vcpu *> vcpu);
+
+    /// Dump
+    ///
+    /// Dumps the contents of the UARTs buffer into a gsl::span so that it
+    /// can be given to an app that is providing the UART buffer to the
+    /// user.
+    ///
+    /// @param buffer the buffer to dump the contents of the UART into
+    /// @return the number of bytes transferred to the buffer
+    ///
+    uint64_t dump(const gsl::span<data_type> &buffer);
 
 private:
 
@@ -141,10 +168,9 @@ private:
 
 private:
 
-    vcpu *m_vcpu;
-    port_type m_port;
+    port_type m_port{};
 
-    bool m_enabled{};
+    std::mutex m_mutex;
     std::deque<data_type> m_buffer;
 
     data_type m_baud_rate_l{};

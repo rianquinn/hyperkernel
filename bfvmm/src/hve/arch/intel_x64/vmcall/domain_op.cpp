@@ -192,6 +192,26 @@ vmcall_domain_op_handler::domain_op__set_pt_uart(
     })
 }
 
+void
+vmcall_domain_op_handler::domain_op__dump_uart(
+    gsl::not_null<vcpu *> vcpu)
+{
+    try {
+        auto buffer =
+            vcpu->map_gva_4k<uint8_t>(vcpu->rdx(), UART_MAX_BUFFER);
+
+        auto bytes_transferred =
+            get_domain(vcpu->rcx())->dump_uart(
+                gsl::span(buffer.get(), UART_MAX_BUFFER)
+            );
+
+        vcpu->set_rax(bytes_transferred);
+    }
+    catchall({
+        vcpu->set_rax(0);
+    })
+}
+
 bool
 vmcall_domain_op_handler::dispatch(
     gsl::not_null<vcpu *> vcpu)
@@ -227,6 +247,10 @@ vmcall_domain_op_handler::dispatch(
 
         case __enum_domain_op__set_pt_uart:
             this->domain_op__set_pt_uart(vcpu);
+            return true;
+
+        case __enum_domain_op__dump_uart:
+            this->domain_op__dump_uart(vcpu);
             return true;
 
         default:

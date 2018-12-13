@@ -21,8 +21,6 @@
 
 #define __XEN_INTERFACE_VERSION__ 0x040900
 
-#include <optional>
-
 #include "../base.h"
 #include "../uart.h"
 
@@ -256,12 +254,6 @@ private:
     vcpu *m_vcpu;
     domain *m_domain;
 
-    uart m_uart_3F8;
-    uart m_uart_2F8;
-    uart m_uart_3E8;
-    uart m_uart_2E8;
-    std::optional<uart> m_pt_uart;
-
     vcpu_info_t *m_vcpu_info;
     uint64_t m_hypercall_page_gpa{};
 
@@ -277,6 +269,7 @@ private:
 public:
 
     /// @cond
+
     xen_op_handler(xen_op_handler &&) = default;
     xen_op_handler &operator=(xen_op_handler &&) = default;
 

@@ -17,6 +17,7 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 #include <bfdebug.h>
+#include <bfhypercall.h>
 
 #include <hve/arch/intel_x64/vcpu.h>
 #include <hve/arch/intel_x64/uart.h>
@@ -31,38 +32,25 @@
     eapis::intel_x64::a::handler_delegate_t::create<uart, &uart::b>(this)
 
 #define EMULATE_IO_INSTRUCTION(a,b,c)                                                               \
-    m_vcpu->emulate_io_instruction(                                                                 \
+    vcpu->emulate_io_instruction(                                                                 \
         a, make_delegate(io_instruction_handler, b), make_delegate(io_instruction_handler, c))
 
 namespace hyperkernel::intel_x64
 {
 
-uart::uart(
-    gsl::not_null<vcpu *> vcpu, port_type port
-) :
-    m_vcpu{vcpu},
+uart::uart(port_type port) :
     m_port{port}
-{
-    if (m_vcpu->is_dom0()) {
-        return;
-    }
-
-    EMULATE_IO_INSTRUCTION(m_port + 0, io_zero_handler, io_ignore_handler);
-    EMULATE_IO_INSTRUCTION(m_port + 1, io_zero_handler, io_ignore_handler);
-    EMULATE_IO_INSTRUCTION(m_port + 2, io_zero_handler, io_ignore_handler);
-    EMULATE_IO_INSTRUCTION(m_port + 3, io_zero_handler, io_ignore_handler);
-    EMULATE_IO_INSTRUCTION(m_port + 4, io_zero_handler, io_ignore_handler);
-    EMULATE_IO_INSTRUCTION(m_port + 5, io_zero_handler, io_ignore_handler);
-}
+{ }
 
 void
-uart::enable()
+uart::enable(gsl::not_null<vcpu *> vcpu)
 {
-    if (m_vcpu->is_dom0()) {
+    if (vcpu->is_dom0()) {
+        bfdebug_nhex(1, "uart: dom0 not supported", m_port);
         return;
     }
 
-    bfdebug_nhex(1, "emulating uart", m_port);
+    bfdebug_nhex(1, "uart: enabling", m_port);
     EMULATE_IO_INSTRUCTION(m_port + 0, reg0_in_handler, reg0_out_handler);
     EMULATE_IO_INSTRUCTION(m_port + 1, reg1_in_handler, reg1_out_handler);
     EMULATE_IO_INSTRUCTION(m_port + 2, reg2_in_handler, reg2_out_handler);
@@ -72,19 +60,51 @@ uart::enable()
 }
 
 void
-uart::pass_through()
+uart::disable(gsl::not_null<vcpu *> vcpu)
 {
-    if (m_vcpu->is_dom0()) {
+    if (vcpu->is_dom0()) {
+        bfdebug_nhex(1, "uart: dom0 not supported", m_port);
         return;
     }
 
-    bfdebug_nhex(1, "passing through uart", m_port);
-    m_vcpu->pass_through_io_accesses(m_port + 0);
-    m_vcpu->pass_through_io_accesses(m_port + 1);
-    m_vcpu->pass_through_io_accesses(m_port + 2);
-    m_vcpu->pass_through_io_accesses(m_port + 3);
-    m_vcpu->pass_through_io_accesses(m_port + 4);
-    m_vcpu->pass_through_io_accesses(m_port + 5);
+    bfdebug_nhex(1, "uart: disabling", m_port);
+    EMULATE_IO_INSTRUCTION(m_port + 0, io_zero_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 1, io_zero_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 2, io_zero_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 3, io_zero_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 4, io_zero_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 5, io_zero_handler, io_ignore_handler);
+}
+
+void
+uart::pass_through(gsl::not_null<vcpu *> vcpu)
+{
+    if (vcpu->is_dom0()) {
+        bfdebug_nhex(1, "uart: dom0 not supported", m_port);
+        return;
+    }
+
+    bfdebug_nhex(1, "uart: passing through", m_port);
+    vcpu->pass_through_io_accesses(m_port + 0);
+    vcpu->pass_through_io_accesses(m_port + 1);
+    vcpu->pass_through_io_accesses(m_port + 2);
+    vcpu->pass_through_io_accesses(m_port + 3);
+    vcpu->pass_through_io_accesses(m_port + 4);
+    vcpu->pass_through_io_accesses(m_port + 5);
+}
+
+uint64_t
+uart::dump(const gsl::span<data_type> &buffer)
+{
+    uint64_t i;
+    std::lock_guard lock(m_mutex);
+
+    for (i = 0; i < m_buffer.size(); i++) {
+        buffer.at(i) = m_buffer.at(i);
+    }
+
+    m_buffer.clear();
+    return i;
 }
 
 bool
@@ -112,6 +132,7 @@ uart::reg0_in_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info)
 {
     bfignored(vcpu);
+    std::lock_guard lock(m_mutex);
 
     if (this->dlab()) {
         info.val = m_baud_rate_l;
@@ -128,6 +149,7 @@ uart::reg1_in_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info)
 {
     bfignored(vcpu);
+    std::lock_guard lock(m_mutex);
 
     if (this->dlab()) {
         info.val = m_baud_rate_h;
@@ -156,6 +178,7 @@ uart::reg3_in_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info)
 {
     bfignored(vcpu);
+    std::lock_guard lock(m_mutex);
 
     info.val = m_line_control_register;
     return true;
@@ -188,12 +211,15 @@ uart::reg0_out_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info)
 {
     bfignored(vcpu);
+    std::lock_guard lock(m_mutex);
 
     if (this->dlab()) {
         m_baud_rate_l = gsl::narrow<data_type>(info.val);
     }
     else {
-        std::cout << gsl::narrow<data_type>(info.val);
+        if (m_buffer.size() < UART_MAX_BUFFER) {
+            m_buffer.push_back(gsl::narrow<data_type>(info.val));
+        }
     }
 
     return true;
@@ -204,6 +230,7 @@ uart::reg1_out_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info)
 {
     bfignored(vcpu);
+    std::lock_guard lock(m_mutex);
 
     if (this->dlab()) {
         m_baud_rate_h = gsl::narrow<data_type>(info.val);
@@ -232,6 +259,7 @@ uart::reg3_out_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info)
 {
     bfignored(vcpu);
+    std::lock_guard lock(m_mutex);
 
     m_line_control_register = gsl::narrow<data_type>(info.val);
     return true;

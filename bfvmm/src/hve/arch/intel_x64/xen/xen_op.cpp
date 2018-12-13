@@ -103,10 +103,6 @@ xen_op_handler::xen_op_handler(
 ) :
     m_vcpu{vcpu},
     m_domain{domain},
-    m_uart_3F8{vcpu, 0x3F8},
-    m_uart_2F8{vcpu, 0x2F8},
-    m_uart_3E8{vcpu, 0x3E8},
-    m_uart_2E8{vcpu, 0x2E8},
     m_evtchn_op{std::make_unique<evtchn_op>(vcpu, this)},
     m_gnttab_op{std::make_unique<gnttab_op>(vcpu, this)}
 {
@@ -152,33 +148,7 @@ xen_op_handler::xen_op_handler(
         return;
     }
 
-    if (auto port = domain->uart(); port != 0) {
-        switch(port) {
-            case 0x3F8:
-                m_uart_3F8.enable();
-                break;
-
-            case 0x2F8:
-                m_uart_2F8.enable();
-                break;
-
-            case 0x3E8:
-                m_uart_3E8.enable();
-                break;
-
-            case 0x2E8:
-                m_uart_2E8.enable();
-                break;
-
-            default:
-                bfalert_nhex(0, "uart port not supported", port);
-        }
-    }
-
-    if (auto port = domain->pt_uart(); port != 0) {
-        m_pt_uart = uart{m_vcpu, port};
-        m_pt_uart->pass_through();
-    }
+    domain->setup_vcpu_uarts(vcpu);
 
     vcpu->pass_through_msr_access(::x64::msrs::ia32_pat::addr);
     vcpu->pass_through_msr_access(::intel_x64::msrs::ia32_efer::addr);

@@ -224,18 +224,63 @@ domain::add_e820_entry(const e820_entry_t &entry)
 
 void
 domain::set_uart(uart::port_type uart) noexcept
-{ m_uart = uart; }
-
-uart::port_type
-domain::uart() const noexcept
-{ return m_uart; }
+{ m_uart_port = uart; }
 
 void
 domain::set_pt_uart(uart::port_type uart) noexcept
-{ m_pt_uart = uart; }
+{ m_pt_uart_port = uart; }
 
-uart::port_type
-domain::pt_uart() const noexcept
-{ return m_pt_uart; }
+void
+domain::setup_vcpu_uarts(gsl::not_null<vcpu *> vcpu)
+{
+    // Note:
+    //
+    // We explicitly disable the 4 default com ports. This is because the
+    // Linux guest will attempt to probe these ports so they need to be
+    // handled by something.
+    //
+
+    m_uart_3F8.disable(vcpu);
+    m_uart_2F8.disable(vcpu);
+    m_uart_3E8.disable(vcpu);
+    m_uart_2E8.disable(vcpu);
+
+    if (m_pt_uart_port == 0) {
+        switch(m_uart_port) {
+            case 0x3F8: m_uart_3F8.enable(vcpu); break;
+            case 0x2F8: m_uart_2F8.enable(vcpu); break;
+            case 0x3E8: m_uart_3E8.enable(vcpu); break;
+            case 0x2E8: m_uart_2E8.enable(vcpu); break;
+
+            default:
+                break;
+        };
+    }
+    else {
+        m_pt_uart = std::make_unique<uart>(m_pt_uart_port);
+        m_pt_uart->pass_through(vcpu);
+    }
+}
+
+uint64_t
+domain::dump_uart(const gsl::span<uart::data_type> &buffer)
+{
+    if (m_pt_uart) {
+        m_pt_uart->dump(buffer);
+    }
+    else {
+        switch(m_uart_port) {
+            case 0x3F8: return m_uart_3F8.dump(buffer);
+            case 0x2F8: return m_uart_2F8.dump(buffer);
+            case 0x3E8: return m_uart_3E8.dump(buffer);
+            case 0x2E8: return m_uart_2E8.dump(buffer);
+
+            default:
+                break;
+        };
+    }
+
+    return 0;
+}
 
 }

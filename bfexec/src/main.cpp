@@ -76,6 +76,25 @@ vcpu_thread(vcpuid_t vcpuid)
 }
 
 // -----------------------------------------------------------------------------
+// UART Thread
+// -----------------------------------------------------------------------------
+
+bool g_process_uart = true;
+
+void
+uart_thread()
+{
+    using namespace std::chrono;
+    std::array<char, UART_MAX_BUFFER> buffer;
+
+    while(g_process_uart) {
+        auto size = __domain_op__dump_uart(g_domainid, buffer.data());
+        std::cout.write(buffer.data(), size);
+        std::this_thread::sleep_for(milliseconds(500));
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Signal Handling
 // -----------------------------------------------------------------------------
 
@@ -132,10 +151,18 @@ attach_to_vm(const args_type &args)
         throw std::runtime_error("__vcpu_op__create_vcpu failed");
     }
 
-    attach_to_vm_verbose();
-
     std::thread t(vcpu_thread, g_vcpuid);
+    std::thread u;
+
+    attach_to_vm_verbose();
+    output_vm_uart_verbose();
+
     t.join();
+
+    if (verbose) {                                                                                                                          \
+        g_process_uart = false;
+        u.join();
+    }
 
     if (__vcpu_op__destroy_vcpu(g_vcpuid) != SUCCESS) {
         std::cerr << "__vcpu_op__destroy_vcpu failed\n";
@@ -177,7 +204,7 @@ create_elf_vm(const args_type &args)
     if (args.count("pt_uart")) {
         pt_uart = args["pt_uart"].as<uint64_t>();
         cmdl.add(
-            "console=uart,io," + bfn::to_string(pt_uart, 16) + ",115200n8"
+            "console=uart,io," + bfn::to_string(pt_uart, 16) + ",115200n8,keep"
         );
     }
 

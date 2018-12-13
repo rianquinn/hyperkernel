@@ -20,6 +20,7 @@
 #define DOMAIN_INTEL_X64_HYPERKERNEL_H
 
 #include <vector>
+#include <memory>
 
 #include "acpi.h"
 #include "uart.h"
@@ -56,6 +57,8 @@ struct e820_entry_t {
     uint64_t size;
     uint32_t type;
 } __attribute__((packed));
+
+class vcpu;
 
 /// Domain
 ///
@@ -249,16 +252,6 @@ public:
     ///
     void set_uart(uart::port_type uart) noexcept;
 
-    /// Get UART
-    ///
-    /// @expects
-    /// @ensures
-    ///
-    /// @return returns the port of an emulated UART on success,
-    ///     and 0 if no UART is set.
-    ///
-    uart::port_type uart() const noexcept;
-
     /// Set Pass-Through UART
     ///
     /// If set, passes through a UART to the VM during each vCPU's
@@ -271,15 +264,31 @@ public:
     ///
     void set_pt_uart(uart::port_type uart) noexcept;
 
-    /// Get Pass-Through UART
+    /// Setup vCPU UARTs
+    ///
+    /// Given a vCPU, this function will setup all of the UARTs based
+    /// on how the domain have been configured.
     ///
     /// @expects
     /// @ensures
     ///
-    /// @return returns the port of a pass-throughed UART on success,
-    ///     and 0 if no UART is set.
+    /// @param vcpu the vCPU to setup
     ///
-    uart::port_type pt_uart() const noexcept;
+    void setup_vcpu_uarts(gsl::not_null<vcpu *> vcpu);
+
+    /// Dump UART
+    ///
+    /// Dumps the contents of the active UART to a provided buffer. Either
+    /// set_uart or set_pt_uart must be executed for this function to
+    /// succeed
+    ///
+    /// @expects
+    /// @ensures
+    ///
+    /// @param buffer the buffer to dump the contents of the UART into
+    /// @return the number of bytes transferred to the buffer
+    ///
+    uint64_t dump_uart(const gsl::span<uart::data_type> &buffer);
 
 public:
 
@@ -326,8 +335,6 @@ private:
     uint64_t m_idt_virt{};
 
     std::vector<e820_entry_t> m_e820_map;
-    uart::port_type m_uart{};
-    uart::port_type m_pt_uart{};
 
     eapis::intel_x64::ept::mmap m_ept_map;
     eapis::intel_x64::vcpu_global_state_t m_vcpu_global_state;
@@ -338,6 +345,14 @@ private:
     page_ptr<madt_t> m_madt;
     page_ptr<fadt_t> m_fadt;
     page_ptr<dsdt_t> m_dsdt;
+
+    uart::port_type m_uart_port{};
+    uart::port_type m_pt_uart_port{};
+    uart m_uart_3F8{0x3F8};
+    uart m_uart_2F8{0x2F8};
+    uart m_uart_3E8{0x3E8};
+    uart m_uart_2E8{0x2E8};
+    std::unique_ptr<uart> m_pt_uart;
 
 public:
 
