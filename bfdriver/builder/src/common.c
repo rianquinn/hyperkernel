@@ -41,7 +41,7 @@ add_e820_entry(void *vm, uint64_t saddr, uint64_t eaddr, uint32_t type)
 
     ret = __domain_op__add_e820_entry(_vm->domainid, saddr, eaddr - saddr, type);
     if (ret != SUCCESS) {
-        BFALERT("__domain_op__add_e820_entry: failed\n");
+        BFDEBUG("__domain_op__add_e820_entry: failed\n");
     }
 
     return ret;
@@ -60,7 +60,7 @@ donate_page(
 
     ret = __domain_op__share_page(vm->domainid, gpa, domain_gpa, type);
     if (ret != SUCCESS) {
-        BFALERT("donate_page: __domain_op__donate_gpa failed\n");
+        BFDEBUG("donate_page: __domain_op__donate_gpa failed\n");
     }
 
     return ret;
@@ -113,7 +113,7 @@ pass_through_uart(
     if (uart != 0) {
         ret = __domain_op__set_pt_uart(vm->domainid, uart);
         if (ret != SUCCESS) {
-            BFALERT("donate_page: __domain_op__set_pt_uart failed\n");
+            BFDEBUG("donate_page: __domain_op__set_pt_uart failed\n");
         }
     }
 
@@ -131,7 +131,7 @@ setup_xen_start_info(struct vm_t *vm)
 
     vm->xen_start_info = bfalloc_page(struct hvm_start_info);
     if (vm->xen_start_info == 0) {
-        BFALERT("setup_xen_start_info: failed to alloc start into page\n");
+        BFDEBUG("setup_xen_start_info: failed to alloc start into page\n");
         return FAILURE;
     }
 
@@ -142,7 +142,7 @@ setup_xen_start_info(struct vm_t *vm)
 
     ret = donate_page(vm, vm->xen_start_info, XEN_START_INFO_PAGE_GPA, MAP_RO);
     if (ret != BF_SUCCESS) {
-        BFALERT("setup_xen_start_info: donate failed\n");
+        BFDEBUG("setup_xen_start_info: donate failed\n");
         return ret;
     }
 
@@ -155,13 +155,13 @@ setup_xen_cmdline(struct vm_t *vm, struct create_from_elf_args *args)
     status_t ret;
 
     if (args->cmdl_size >= BAREFLANK_PAGE_SIZE) {
-        BFALERT("setup_xen_cmdline: cmdl must be smaller than a page\n");
+        BFDEBUG("setup_xen_cmdline: cmdl must be smaller than a page\n");
         return FAILURE;
     }
 
     vm->xen_cmdl = bfalloc_page(char);
     if (vm->xen_cmdl == 0) {
-        BFALERT("setup_xen_cmdline: failed to alloc cmdl page\n");
+        BFDEBUG("setup_xen_cmdline: failed to alloc cmdl page\n");
         return FAILURE;
     }
 
@@ -169,7 +169,7 @@ setup_xen_cmdline(struct vm_t *vm, struct create_from_elf_args *args)
 
     ret = donate_page(vm, vm->xen_cmdl, XEN_COMMAND_LINE_PAGE_GPA, MAP_RO);
     if (ret != BF_SUCCESS) {
-        BFALERT("setup_xen_cmdline: donate failed\n");
+        BFDEBUG("setup_xen_cmdline: donate failed\n");
         return ret;
     }
 
@@ -183,13 +183,13 @@ setup_xen_console(struct vm_t *vm)
 
     vm->xen_console = bfalloc_page(void);
     if (vm->xen_console == 0) {
-        BFALERT("setup_xen_console: failed to alloc console page\n");
+        BFDEBUG("setup_xen_console: failed to alloc console page\n");
         return FAILURE;
     }
 
     ret = donate_page(vm, vm->xen_console, XEN_CONSOLE_PAGE_GPA, MAP_RW);
     if (ret != BF_SUCCESS) {
-        BFALERT("setup_xen_console: donate failed\n");
+        BFDEBUG("setup_xen_console: donate failed\n");
         return ret;
     }
 
@@ -203,13 +203,13 @@ setup_bios_ram(struct vm_t *vm)
 
     vm->bios_ram = bfalloc_buffer(void, BIOS_RAM_SIZE);
     if (vm->bios_ram == 0) {
-        BFALERT("setup_bios_ram: failed to alloc bios ram\n");
+        BFDEBUG("setup_bios_ram: failed to alloc bios ram\n");
         return FAILURE;
     }
 
     ret = donate_buffer(vm, vm->bios_ram, BIOS_RAM_ADDR, BIOS_RAM_SIZE, MAP_RWE);
     if (ret != BF_SUCCESS) {
-        BFALERT("setup_bios_ram: donate failed\n");
+        BFDEBUG("setup_bios_ram: donate failed\n");
         return ret;
     }
 
@@ -223,21 +223,21 @@ setup_reserved_free(struct vm_t *vm)
 
     vm->zero_page = bfalloc_page(void);
     if (vm->zero_page == 0) {
-        BFALERT("setup_reserved_free: failed to alloc zero page\n");
+        BFDEBUG("setup_reserved_free: failed to alloc zero page\n");
         return FAILURE;
     }
 
     ret = donate_page_to_page_range(
         vm, vm->zero_page, RESERVED1_ADRR, RESERVED1_SIZE, MAP_RO);
     if (ret != BF_SUCCESS) {
-        BFALERT("setup_reserved_free: donate failed\n");
+        BFDEBUG("setup_reserved_free: donate failed\n");
         return ret;
     }
 
     ret = donate_page_to_page_range(
         vm, vm->zero_page, RESERVED2_ADRR, RESERVED2_ADRR, MAP_RO);
     if (ret != BF_SUCCESS) {
-        BFALERT("setup_reserved_free: donate failed\n");
+        BFDEBUG("setup_reserved_free: donate failed\n");
         return ret;
     }
 
@@ -293,7 +293,7 @@ get_phys32_entry(struct vm_t *vm, uint32_t *entry)
 
     shdr = vm->bfelf_binary.ef.notes;
     if (!shdr) {
-        BFALERT("get_entry: no notes section\n");
+        BFDEBUG("get_entry: no notes section\n");
         return FAILURE;
     }
 
@@ -320,13 +320,13 @@ setup_entry(struct vm_t *vm)
 
     ret = get_phys32_entry(vm, &vm->entry);
     if (ret != SUCCESS) {
-        BFALERT("setup_entry: failed to locate pvh_start_xen\n");
+        BFDEBUG("setup_entry: failed to locate pvh_start_xen\n");
         return ret;
     }
 
     ret = __domain_op__set_entry(vm->domainid, vm->entry);
     if (ret != SUCCESS) {
-        BFALERT("setup_entry: __domain_op__set_entry failed\n");
+        BFDEBUG("setup_entry: __domain_op__set_entry failed\n");
     }
 
     return ret;
@@ -348,7 +348,7 @@ common_create_from_elf(
 
     vm->domainid = __domain_op__create_domain();
     if (vm->domainid == INVALID_DOMAINID) {
-        BFALERT("__domain_op__create_domain failed\n");
+        BFDEBUG("__domain_op__create_domain failed\n");
         return CREATE_FROM_ELF_FAILED;
     }
 
@@ -412,7 +412,7 @@ common_destroy(struct vm_t *vm)
 
     ret = __domain_op__destroy_domain(vm->domainid);
     if (ret != SUCCESS) {
-        BFALERT("__domain_op__destroy_domain failed\n");
+        BFDEBUG("__domain_op__destroy_domain failed\n");
         return FAILURE;
     }
 
@@ -423,5 +423,6 @@ common_destroy(struct vm_t *vm)
     platform_free_rw(vm->bios_ram, 0xE8000);
     platform_free_rw(vm->zero_page, BAREFLANK_PAGE_SIZE);
 
+    platform_memset(vm, 0, sizeof(struct vm_t));
     return BF_SUCCESS;
 }

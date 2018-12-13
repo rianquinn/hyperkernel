@@ -38,7 +38,7 @@ struct vm_t g_vms[MAX_VMS] = {0};
 /* VM Helpers                                                                 */
 /* -------------------------------------------------------------------------- */
 
-// DEFINE_MUTEX(g_vm_mutex);
+FAST_MUTEX g_vm_mutex;
 
 static struct vm_t *
 acquire_vm(void)
@@ -46,7 +46,7 @@ acquire_vm(void)
     int64_t i;
     struct vm_t *vm = 0;
 
-    // mutex_lock(&g_vm_mutex);
+    ExAcquireFastMutex(&g_vm_mutex);
 
     for (i = 0; i < MAX_VMS; i++) {
         vm = &g_vms[i];
@@ -65,7 +65,7 @@ acquire_vm(void)
 
 done:
 
-    // mutex_unlock(&g_vm_mutex);
+    ExReleaseFastMutex(&g_vm_mutex);
     return vm;
 }
 
@@ -75,7 +75,7 @@ get_vm(domainid_t domainid)
     int64_t i;
     struct vm_t *vm = 0;
 
-    // mutex_lock(&g_vm_mutex);
+    ExAcquireFastMutex(&g_vm_mutex);
 
     for (i = 0; i < MAX_VMS; i++) {
         vm = &g_vms[i];
@@ -91,7 +91,7 @@ get_vm(domainid_t domainid)
 
 done:
 
-    // mutex_unlock(&g_vm_mutex);
+    ExReleaseFastMutex(&g_vm_mutex);
     return vm;
 }
 
@@ -182,6 +182,8 @@ builderQueueInitialize(
     WDFQUEUE queue;
     NTSTATUS status;
     WDF_IO_QUEUE_CONFIG queueConfig;
+
+    ExInitializeFastMutex(&g_vm_mutex);
 
     WDF_IO_QUEUE_CONFIG_INIT_DEFAULT_QUEUE(
         &queueConfig,
