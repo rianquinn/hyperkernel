@@ -60,6 +60,8 @@ uart::enable(gsl::not_null<vcpu *> vcpu)
     EMULATE_IO_INSTRUCTION(m_port + 3, reg3_in_handler, reg3_out_handler);
     EMULATE_IO_INSTRUCTION(m_port + 4, reg4_in_handler, reg4_out_handler);
     EMULATE_IO_INSTRUCTION(m_port + 5, reg5_in_handler, reg5_out_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 6, reg6_in_handler, reg6_out_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 7, reg7_in_handler, reg7_out_handler);
 
     EMULATE_CPUID(0xBF00, cpuid_in_handler);
 }
@@ -79,6 +81,10 @@ uart::disable(gsl::not_null<vcpu *> vcpu)
     EMULATE_IO_INSTRUCTION(m_port + 3, io_zero_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(m_port + 4, io_zero_handler, io_ignore_handler);
     EMULATE_IO_INSTRUCTION(m_port + 5, io_zero_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 6, io_zero_handler, io_ignore_handler);
+    EMULATE_IO_INSTRUCTION(m_port + 7, io_zero_handler, io_ignore_handler);
+
+    EMULATE_CPUID(0xBF00, cpuid_in_handler);
 }
 
 void
@@ -96,10 +102,14 @@ uart::pass_through(gsl::not_null<vcpu *> vcpu)
     vcpu->pass_through_io_accesses(m_port + 3);
     vcpu->pass_through_io_accesses(m_port + 4);
     vcpu->pass_through_io_accesses(m_port + 5);
+    vcpu->pass_through_io_accesses(m_port + 6);
+    vcpu->pass_through_io_accesses(m_port + 7);
+
+    EMULATE_CPUID(0xBF00, cpuid_in_handler);
 }
 
 uint64_t
-uart::dump(const gsl::span<data_type> &buffer)
+uart::dump(const gsl::span<char> &buffer)
 {
     uint64_t i;
     std::lock_guard lock(m_mutex);
@@ -212,6 +222,30 @@ uart::reg5_in_handler(
 }
 
 bool
+uart::reg6_in_handler(
+    gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info)
+{
+    bfignored(vcpu);
+
+    info.val = 0x0;
+    bfalert_info(1, "uart: reg6 read not supported");
+
+    return true;
+}
+
+bool
+uart::reg7_in_handler(
+    gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info)
+{
+    bfignored(vcpu);
+
+    info.val = 0x0;
+    bfalert_info(1, "uart: reg7 read not supported");
+
+    return true;
+}
+
+bool
 uart::reg0_out_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info)
 {
@@ -222,9 +256,7 @@ uart::reg0_out_handler(
         m_baud_rate_l = gsl::narrow<data_type>(info.val);
     }
     else {
-        if (m_index < m_buffer.size()) {
-            m_buffer.at(m_index++) = gsl::narrow<data_type>(info.val);
-        }
+        this->write(gsl::narrow<char>(info.val));
     }
 
     return true;
@@ -292,22 +324,56 @@ uart::reg5_out_handler(
 }
 
 bool
+uart::reg6_out_handler(
+    gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info)
+{
+    bfignored(vcpu);
+    bfignored(info);
+
+    bfalert_info(1, "uart: reg6 write not supported");
+    return true;
+}
+
+bool
+uart::reg7_out_handler(
+    gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info)
+{
+    bfignored(vcpu);
+    bfignored(info);
+
+    bfalert_info(1, "uart: reg7 write not supported");
+    return true;
+}
+
+#define MSG "Hello World"
+
+bool
 uart::cpuid_in_handler(
     gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info)
 {
     bfignored(info);
     std::lock_guard lock(m_mutex);
 
-    const auto msg = "Hello World";
-    for (auto i = 0U; i < strlen(msg); i++) {
-        m_buffer.at(m_index++) = static_cast<data_type>(msg[i]);
-    }
-
-    bfdebug_nhex(0, msg, vcpu->rax());
-    m_buffer.at(m_index++) = static_cast<data_type>('\n');
+    this->write(MSG "\n");
+    bfdebug_nhex(0, MSG, vcpu->rax());
 
     return true;
 }
 
+void
+uart::write(const char c)
+{
+    if (m_index < m_buffer.size()) {
+        m_buffer.at(m_index++) = c;
+    }
+}
+
+void
+uart::write(const char *str)
+{
+    for (auto i = 0U; i < strlen(str); i++) {
+        this->write(str[i]);
+    }
+}
 
 }

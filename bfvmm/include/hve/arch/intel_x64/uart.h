@@ -130,7 +130,7 @@ public:
     /// @param buffer the buffer to dump the contents of the UART into
     /// @return the number of bytes transferred to the buffer
     ///
-    uint64_t dump(const gsl::span<data_type> &buffer);
+    uint64_t dump(const gsl::span<char> &buffer);
 
 private:
 
@@ -151,6 +151,10 @@ private:
         gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info);
     bool reg5_in_handler(
         gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info);
+    bool reg6_in_handler(
+        gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info);
+    bool reg7_in_handler(
+        gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info);
 
     bool reg0_out_handler(
         gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info);
@@ -164,6 +168,10 @@ private:
         gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info);
     bool reg5_out_handler(
         gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info);
+    bool reg6_out_handler(
+        gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info);
+    bool reg7_out_handler(
+        gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::io_instruction_handler::info_t &info);
 
     bool cpuid_in_handler(
         gsl::not_null<vcpu_t *> vcpu, eapis::intel_x64::cpuid_handler::info_t &info);
@@ -171,13 +179,16 @@ private:
     bool dlab() const
     { return m_line_control_register & 0x80; }
 
+    void write(const char c);
+    void write(const char *str);
+
 private:
 
     port_type m_port{};
 
     std::mutex m_mutex{};
     std::size_t m_index{};
-    std::array<data_type, UART_MAX_BUFFER> m_buffer{};
+    std::array<char, UART_MAX_BUFFER> m_buffer{};
 
     data_type m_baud_rate_l{};
     data_type m_baud_rate_h{};

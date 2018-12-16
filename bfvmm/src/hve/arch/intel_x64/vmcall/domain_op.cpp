@@ -198,7 +198,7 @@ vmcall_domain_op_handler::domain_op__dump_uart(
 {
     try {
         auto buffer =
-            vcpu->map_gva_4k<uint8_t>(vcpu->rdx(), UART_MAX_BUFFER);
+            vcpu->map_gva_4k<char>(vcpu->rdx(), UART_MAX_BUFFER);
 
         auto bytes_transferred =
             get_domain(vcpu->rcx())->dump_uart(

@@ -288,7 +288,7 @@ public:
     /// @param buffer the buffer to dump the contents of the UART into
     /// @return the number of bytes transferred to the buffer
     ///
-    uint64_t dump_uart(const gsl::span<uart::data_type> &buffer);
+    uint64_t dump_uart(const gsl::span<char> &buffer);
 
 public:
 

@@ -263,7 +263,7 @@ domain::setup_vcpu_uarts(gsl::not_null<vcpu *> vcpu)
 }
 
 uint64_t
-domain::dump_uart(const gsl::span<uart::data_type> &buffer)
+domain::dump_uart(const gsl::span<char> &buffer)
 {
     if (m_pt_uart) {
         m_pt_uart->dump(buffer);
